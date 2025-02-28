@@ -43,7 +43,19 @@ with GraphDatabase.driver(URI, auth=AUTH) as driver:
                     """, film=film,
                     database_="neo4j",
                 )
+        records, summary, keys = driver.execute_query("""
+            MATCH (f:Film)
+            RETURN f.name
+            """,
+            routing_="r",
+            database_="neo4j",
+        )
+        print("Listing all films in database")
+        for record in records:
+            data = record.data()
+            print(data['f.name'])
 
+        print ("=========================================================")
         # Retrieve Films which have Chris Evans
         records, summary, keys = driver.execute_query("""
             MATCH (f:Film)-[:HAS]-(a:Actor{name: $name})
@@ -53,15 +65,10 @@ with GraphDatabase.driver(URI, auth=AUTH) as driver:
             database_="neo4j",
         )
         # Loop through results
+        print("Finding all films in database with Chris Evans:")
         for record in records:
-            print(record.data())
-
-        
-        # Summary information
-        print("The query `{query}` returned {records_count} records in {time} ms.".format(
-            query=summary.query, records_count=len(records),
-            time=summary.result_available_after
-        ))
+            data = record.data()
+            print(data['f.name'])
 
     except Exception as e:
         print(e)
