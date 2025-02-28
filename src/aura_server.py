@@ -2,20 +2,19 @@ import dotenv
 import os
 from neo4j import GraphDatabase
 
-load_status = dotenv.load_dotenv("credentials.txt")
+load_status = dotenv.load_dotenv("aura_credentials.txt")
 if load_status is False:
     raise RuntimeError('Environment variables not loaded.')
 
 URI = os.getenv("NEO4J_URI")
-#uncomment for authenticated local server
-#AUTH = (os.getenv("NEO4J_USERNAME"), os.getenv("NEO4J_PASSWORD"))
+AUTH = (os.getenv("NEO4J_USERNAME"), os.getenv("NEO4J_PASSWORD"))
 
 films = [{"name": "Pulp Fiction", "year": 1994, "actors":["John Travolta", "Samuel L Jackson", "Uma Thurman"]},
           {"name": "The Avengers", "year": 2012, "actors":["Samuel L Jackson", "Chris Evans", "Scarlett Johansson"]},
           {"name": "Knives Out", "year": 2019, "actors": ["Chris Evans", "Daniel Craig", "Jamie Lee Curtis"]},
           {"name": "Scott Pilgrim vs. the World", "year": 2010, "actors": ["Michael Cera", "Chris Evans", "Anna Kendrick"]}]
 
-with GraphDatabase.driver(URI) as driver:
+with GraphDatabase.driver(URI, auth=AUTH) as driver:
     try:
 
         # Create some nodes
