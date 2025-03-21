@@ -3,7 +3,9 @@ import Graph from "./Graph";
 export default function App({}) {
   return (
     <main>
-      <Graph></Graph>
+      <div className="App">
+        <Graph></Graph>
+      </div>
     </main>
   );
 }

@@ -11,7 +11,6 @@ export async function queryServer(query) {
     await driver.close();
     return;
   }
-
   let result = await driver.executeQuery(
     `${query}`,
     {},
@@ -21,28 +20,26 @@ export async function queryServer(query) {
   );
   let nodeData = [];
   let edgeData = [];
-  let count = 2;
   for (let i = 0; i < result.records.length; i++) {
     let record = result.records[i];
     //console.log(record);
     nodeData.push({
-      id: `${count}`,
-      name: `${record.get(0)}`,
+      id: `${record.get("person_id")}`,
+      caption: `${record.get("n.name")}`,
     });
-    count++;
     nodeData.push({
-      id: `${count}`,
-      title: `${record.get(2)}`,
+      id: `${record.get("movie_id")}`,
+      caption: `${record.get("m.title")}`,
     });
-    count++;
     edgeData.push({
-      id: `${count}`,
-      roles: `${record.get(1)}`,
-      from: `${count - 2}`,
-      to: `${count - 1}`,
+      id: `${record.get("edge_id")}`,
+      caption: `${record.get("a.roles")}`,
+      from: `${record.get("person_id")}`,
+      to: `${record.get("movie_id")}`,
     });
-    count++;
   }
   await driver.close();
+  console.log(nodeData);
+  console.log(edgeData);
   return [nodeData, edgeData];
 }

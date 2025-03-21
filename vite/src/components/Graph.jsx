@@ -5,11 +5,12 @@ import { queryServer } from "../server-requests";
 import neo4j from "neo4j-driver";
 
 export default function Graph() {
-  const [nodes, setNodes] = useState([{ id: "0" }, { id: "1" }]);
+  const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
+
   async function getNodes() {
     const records = await queryServer(
-      "MATCH (n:Person)-[a:ACTED_IN]-(m:Movie) RETURN n.name,a.roles,m.title"
+      "MATCH (n:Person)-[a:ACTED_IN]-(m:Movie) RETURN ID(n) AS person_id,n.name,ID(a) AS edge_id,a.roles,ID(m) AS movie_id, m.title LIMIT 15"
     );
     console.log(records);
     setNodes(records[0]);
@@ -19,14 +20,14 @@ export default function Graph() {
   }
 
   return (
-    <div>
+    <div style={{ width: "100%", height: 500 }}>
       <BasicNvlWrapper
         nodes={nodes}
         rels={edges}
-        nvlOptions={{ initialZoom: 2 }}
+        nvlOptions={{ initialZoom: 1.2 }}
         nvlCallbacks={{ onLayoutDone: () => console.log("layout done") }}
       />
-      <button onClick={getNodes}>Add Graph Elements</button>
+      <button onClick={getNodes}>Get 15 nodes</button>
     </div>
   );
 }
