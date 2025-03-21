@@ -11,6 +11,7 @@ export async function queryServer(query) {
     await driver.close();
     return;
   }
+
   let result = await driver.executeQuery(
     `${query}`,
     {},
