@@ -12,7 +12,7 @@ export async function getTestGraph() {
     return;
   }
   let query =
-    "MATCH (n:Person)-[a:ACTED_IN]-(m:Movie) RETURN ID(n) AS person_id,n.name,ID(a) AS edge_id,a.roles,ID(m) AS movie_id, m.title,m.released LIMIT 10";
+    "MATCH (n:Person)-[a:ACTED_IN]-(m:Movie) RETURN DISTINCT ID(n) AS person_id,n.name,ID(a) AS edge_id,ID(m) AS movie_id, m.title,m.released LIMIT 10";
   let result = await driver.executeQuery(
     `${query}`,
     {},
@@ -20,41 +20,38 @@ export async function getTestGraph() {
       database: "neo4j",
     }
   );
-  let personNodeData: string[] = [];
-  let movieNodeData: string[] = [];
-  let actedEdgeData: string[] = [];
+  let personNodeData: any[] = [];
+  let movieNodeData: any[] = [];
+  let actedEdgeData: any[] = [];
   //console.log(result.records);
   for (let i = 0; i < result.records.length; i++) {
     let record = result.records[i];
-    //console.log(record);
-    const personData: string = `{
-      "id": "${record.get("person_id")}",
-      "data": {
-        "name": "${record.get("n.name")}",
-      },
-    }`;
+    const personData = {
+      id: record.get("person_id"),
+      data: { name: record.get("n.name") },
+    };
     personNodeData.push(personData);
-    const movieData: string = `{
-      "id": "${record.get("movie_id")}",
-      "data": {
-        "title": "${record.get("m.title")}",
-        "released": "${record.get("m.released")}",
+    let movie_id = Number(record.get("movie_id")) + 50;
+    const movieData = {
+      id: movie_id,
+      data: {
+        title: record.get("m.title"),
+        released: record.get("m.released"),
       },
-    }`;
+    };
     movieNodeData.push(movieData);
-    const edgeData: string = `{
-      "id": "${record.get("edge_id")}",
-      "data": {
-        "roles": "${record.get("a.roles")}",
-        "from": "${record.get("person_id")}",
-        "to": "${record.get("movie_id")}",
+    const edgeData = {
+      id: record.get("edge_id"),
+      data: {
+        from: record.get("person_id"),
+        to: movie_id,
       },
-    }`;
+    };
     actedEdgeData.push(edgeData);
   }
   await driver.close();
-  //console.log(personNodeData);
-  //console.log(movieNodeData);
-  //console.log(edgeData);
+  console.log(personNodeData);
+  console.log(movieNodeData);
+  console.log(actedEdgeData);
   return [personNodeData, movieNodeData, actedEdgeData];
 }

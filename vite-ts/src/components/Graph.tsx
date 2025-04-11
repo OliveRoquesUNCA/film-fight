@@ -71,9 +71,30 @@ export default function Graph() {
     minY: number,
     maxY: number
   ) {
-    const x: number = Math.random() * (maxX - minX) + minX;
-    const y: number = Math.random() * (maxY - minY) + minY;
+    const minCeiledX: number = Math.ceil(minX);
+    const maxFlooredX: number = Math.floor(maxX);
+    const minCeiledY: number = Math.ceil(minY);
+    const maxFlooredY: number = Math.floor(maxY);
+    const x: number = Math.floor(
+      Math.random() * (maxFlooredX - minCeiledX + 1) + minCeiledX
+    );
+    const y: number = Math.floor(
+      Math.random() * (maxFlooredY - minCeiledY + 1) + minCeiledY
+    );
     return [x, y];
+  }
+
+  function trimDuplicateNodes(nodes: any[]) {
+    let result = nodes.reduce((accumulator, current) => {
+      let exists = accumulator.find((item: any) => {
+        return item.id === current.id;
+      });
+      if (!exists) {
+        accumulator = accumulator.concat(current);
+      }
+      return accumulator;
+    }, []);
+    return result;
   }
   async function getTestNodes() {
     let records = await getTestGraph();
@@ -86,66 +107,47 @@ export default function Graph() {
       let personNodes: Node[] = [];
       let movieNodes: Node[] = [];
       let edges: Edge[] = [];
-      let usedXPositions: number[] = [];
-      let usedYPositions: number[] = [];
+      let startingXPosition: number = 5;
+      let startingYPosition: number = 5;
 
       //get person nodes
       for (let i = 0; i < personRecords.length; i++) {
-        let position: number[] = randomCoordinates(1, 1200, 1, 700);
-        while (
-          usedXPositions.includes(position[0]) ||
-          usedYPositions.includes(position[1])
-        ) {
-          position = randomCoordinates(1, 1200, 1, 700);
-        }
-        usedXPositions.push(position[0]);
-        usedYPositions.push(position[1]);
-
+        startingXPosition += 30;
+        startingYPosition += 30;
+        let position: number[] = [startingXPosition, startingYPosition];
         //parse json
-        const personRecord = JSON.parse(personRecords[i]);
-        console.log(personRecord);
+        console.log(personRecords[i]);
+        let personRecord = JSON.parse(JSON.stringify(personRecords[i]));
+
+        //console.log(personRecord);
+        //console.log(personRecord["id"].low);
         const person: Node = {
-          id: `${personRecord.id}`,
+          id: `${personRecord["id"].low}`,
           type: "personNode",
-          data: { label: `${personRecord.data.name}` },
+          data: { label: `${personRecord["data"].name}` },
           position: { x: position[0], y: position[1] },
         };
         console.log(person);
         personNodes.push(person);
       }
-      console.log("personNodes:");
-      console.log(personNodes);
 
       //get movie nodes
       for (let i = 0; i < movieRecords.length; i++) {
-        let position: number[] = randomCoordinates(1, 1200, 1, 700);
-        while (
-          usedXPositions.includes(position[0]) ||
-          usedYPositions.includes(position[1])
-        ) {
-          position = randomCoordinates(1, 1200, 1, 700);
-        }
-        usedXPositions.push(position[0]);
-        usedYPositions.push(position[1]);
+        startingXPosition += 30;
+        startingYPosition += 30;
+        let position: number[] = [startingXPosition, startingYPosition];
 
         //parse json
-        const movieRecord = JSON.parse(movieRecords[i]);
-
+        const movieRecord = JSON.parse(JSON.stringify(movieRecords[i]));
+        console.log("movie record");
+        console.log(movieRecord);
         //check if movie has already been added; if so, skip to next record
-        let unique = true;
-        movieNodes.forEach((element) => {
-          if (element.id === movieRecord.id) {
-            unique = false;
-          }
-        });
-        if (unique !== true) {
-          continue;
-        }
+
         const movie: Node = {
-          id: `${movieRecord.id}`,
+          id: `${movieRecord["id"]}`,
           type: "movieNode",
           data: {
-            label: `${movieRecord.data.title} /n released in ${movieRecord.data.released}`,
+            label: `${movieRecord["data"].title}, ${movieRecord["data"].released.low}`,
           },
           position: { x: position[0], y: position[1] },
         };
@@ -154,19 +156,34 @@ export default function Graph() {
 
       //get edges
       for (let i = 0; i < edgeRecords.length; i++) {
-        const edgeRecord = JSON.parse(edgeRecords[i]);
-
+        const edgeRecord = JSON.parse(JSON.stringify(edgeRecords[i]));
+        console.log("edge record");
+        console.log(edgeRecord);
         const edge: Edge = {
-          id: `e${edgeRecord.from}-${edgeRecord.to}`,
+          id: `e${edgeRecord["data"].from.low}-${edgeRecord["data"].to}`,
           type: "actedInEdge",
-          source: `${edgeRecord.from}`,
-          target: `${edgeRecord.to}`,
+          source: `${edgeRecord["data"].from.low}`,
+          target: `${edgeRecord["data"].to}`,
         };
+        edges.push(edge);
       }
+      console.log("personNodes:");
+      console.log(trimDuplicateNodes(personNodes));
+      console.log("movieNodes:");
+      console.log(trimDuplicateNodes(movieNodes));
+      console.log("edges:");
+      console.log(edges);
+
+      //trim duplicate objects
+      setNodes(
+        trimDuplicateNodes(personNodes).concat(trimDuplicateNodes(movieNodes))
+      );
+      setEdges(edges);
     }
   }
   return (
-    <div>
+    <div style={{ height: 700, width: 1000 }}>
+      <button onClick={getTestNodes}>Click to get Test Graph</button>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -181,7 +198,6 @@ export default function Graph() {
         <Background />
         <Controls />
       </ReactFlow>
-      <button onClick={getTestNodes}>Click to get Test Graph</button>
     </div>
   );
 }
