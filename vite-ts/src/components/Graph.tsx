@@ -19,7 +19,11 @@ import "@xyflow/react/dist/style.css";
 import PersonNode from "./PersonNode";
 import MovieNode from "./MovieNode";
 import ActedInEdge from "./ActedInEdge";
-import { getTestGraph } from "../server-requests";
+import {
+  getConnectedActors,
+  getRandomActor,
+  getTestGraph,
+} from "../server-requests";
 
 const initialNodes: Node[] = [
   { id: "1", data: { label: "Node 1" }, position: { x: 5, y: 5 } },
@@ -52,6 +56,8 @@ const onNodeDrag: OnNodeDrag = (_, node) => {
 export default function Graph() {
   const [nodes, setNodes] = useState<Node[]>(initialNodes);
   const [edges, setEdges] = useState<Edge[]>(initialEdges);
+  const [currentNodeName, setCurrentNodeName] = useState<string>();
+  const [currentNodeId, setCurrentNodeId] = useState<string>();
 
   const onNodesChange: OnNodesChange = useCallback(
     (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
@@ -106,7 +112,7 @@ export default function Graph() {
       const edgeRecords: string[] = records[2];
       let personNodes: Node[] = [];
       let movieNodes: Node[] = [];
-      let edges: Edge[] = [];
+      let movieEdges: Edge[] = [];
       let startingXPosition: number = 5;
       let startingYPosition: number = 5;
 
@@ -116,7 +122,7 @@ export default function Graph() {
         startingYPosition += 30;
         let position: number[] = [startingXPosition, startingYPosition];
         //parse json
-        console.log(personRecords[i]);
+        //console.log(personRecords[i]);
         let personRecord = JSON.parse(JSON.stringify(personRecords[i]));
 
         //console.log(personRecord);
@@ -127,7 +133,7 @@ export default function Graph() {
           data: { label: `${personRecord["data"].name}` },
           position: { x: position[0], y: position[1] },
         };
-        console.log(person);
+        //console.log(person);
         personNodes.push(person);
       }
 
@@ -139,8 +145,8 @@ export default function Graph() {
 
         //parse json
         const movieRecord = JSON.parse(JSON.stringify(movieRecords[i]));
-        console.log("movie record");
-        console.log(movieRecord);
+        // console.log("movie record");
+        //console.log(movieRecord);
         //check if movie has already been added; if so, skip to next record
 
         const movie: Node = {
@@ -157,22 +163,22 @@ export default function Graph() {
       //get edges
       for (let i = 0; i < edgeRecords.length; i++) {
         const edgeRecord = JSON.parse(JSON.stringify(edgeRecords[i]));
-        console.log("edge record");
-        console.log(edgeRecord);
+        //console.log("edge record");
+        //console.log(edgeRecord);
         const edge: Edge = {
           id: `e${edgeRecord["data"].from.low}-${edgeRecord["data"].to}`,
           type: "actedInEdge",
           source: `${edgeRecord["data"].from.low}`,
           target: `${edgeRecord["data"].to}`,
         };
-        edges.push(edge);
+        movieEdges.push(edge);
       }
-      console.log("personNodes:");
-      console.log(trimDuplicateNodes(personNodes));
-      console.log("movieNodes:");
-      console.log(trimDuplicateNodes(movieNodes));
-      console.log("edges:");
-      console.log(edges);
+      // console.log("personNodes:");
+      // console.log(trimDuplicateNodes(personNodes));
+      // console.log("movieNodes:");
+      // console.log(trimDuplicateNodes(movieNodes));
+      // console.log("edges:");
+      // console.log(edges);
 
       //trim duplicate objects
       setNodes(
@@ -181,9 +187,123 @@ export default function Graph() {
       setEdges(edges);
     }
   }
+  async function startGame() {
+    resetNodes();
+    let records = await getRandomActor();
+    let startingActorArray: Node[] = [];
+    let name: string = "";
+    console.log(records);
+    if (records !== undefined) {
+      let startingRecord = JSON.parse(JSON.stringify(records[0]));
+
+      const startingActor: Node = {
+        id: `${startingRecord["id"].low}`,
+        type: "personNode",
+        data: { label: `${startingRecord["data"].name}` },
+        position: { x: 0, y: 0 },
+      };
+      startingActorArray.push(startingActor);
+      setNodes(startingActorArray);
+      name = startingRecord["data"].name;
+      setCurrentNodeName(name);
+      setCurrentNodeId(startingActor["id"]);
+    } else {
+      return;
+    }
+  }
+
+  async function getConnectedNodes(name: string) {
+    let records = await getConnectedActors(name);
+    if (records !== undefined) {
+      const personRecords: string[] = records[0];
+      let personNodes: Node[] = [];
+      let startingXPosition: number = nodes[0].position.x;
+      let startingYPosition: number = nodes[0].position.y;
+
+      //get person nodes
+      for (let i = 0; i < personRecords.length; i++) {
+        startingXPosition = 70;
+        let position: number[] = [startingXPosition, startingYPosition];
+        //parse json
+        //console.log(personRecords[i]);
+        let personRecord = JSON.parse(JSON.stringify(personRecords[i]));
+
+        //console.log(personRecord);
+        //console.log(personRecord["id"].low);
+        const person: Node = {
+          id: `${personRecord["id"].low}`,
+          type: "personNode",
+          data: { label: `${personRecord["data"].name}` },
+          position: { x: position[0], y: position[1] },
+        };
+        //console.log(person);
+        personNodes.push(person);
+      }
+
+      // console.log("personNodes:");
+      // console.log(trimDuplicateNodes(personNodes));
+      // console.log("movieNodes:");
+      // console.log(trimDuplicateNodes(movieNodes));
+      // console.log("edges:");
+      // console.log(edges);
+
+      //trim duplicate objects
+      let uniquePersonNodes = trimDuplicateNodes(personNodes);
+      return [uniquePersonNodes];
+    }
+  }
+
+  async function search(formData: any) {
+    const query = formData.get("query");
+    if (currentNodeName !== undefined) {
+      let connectedNodes = await getConnectedNodes(currentNodeName);
+      if (connectedNodes !== undefined) {
+        let connectedActorNodes: Node[] = connectedNodes[0];
+        for (let i = 0; i < connectedActorNodes.length; i++) {
+          let newNode: Node = connectedActorNodes[i];
+          if (query === newNode.data.label) {
+            const edge: Edge[] = [
+              {
+                id: `e${currentNodeId}-${newNode["id"]}`,
+                type: "actedInEdge",
+                source: `${currentNodeId}`,
+                target: `${newNode["id"]}`,
+              },
+            ];
+            let newNodes: Node[] = nodes.concat(newNode);
+            setNodes(newNodes);
+            let newEdges: Edge[] = edges.concat(edge);
+            setEdges(newEdges);
+            setCurrentNodeName(String(newNode.data.label));
+            setCurrentNodeId(newNode.id);
+            break;
+          }
+        }
+        return;
+      }
+    }
+  }
+  function resetNodes() {
+    setNodes([]);
+    setEdges([]);
+  }
   return (
     <div style={{ height: 700, width: 1000 }}>
-      <button onClick={getTestNodes}>Click to get Test Graph</button>
+      <button id="testbutton" onClick={getTestNodes}>
+        Click to get Test Graph
+      </button>
+      <button id="gamebutton" onClick={startGame}>
+        Click to start game
+      </button>
+      <button id="reset board" onClick={resetNodes}>
+        Click to reset board
+      </button>
+      <form action={search}>
+        Guess the next actor:
+        <input name="query"></input>
+        <button type="submit">Submit</button>
+      </form>
+
       <ReactFlow
         nodes={nodes}
         edges={edges}
