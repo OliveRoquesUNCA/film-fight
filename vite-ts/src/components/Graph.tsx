@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useCallback } from "react";
 import {
   ReactFlow,
@@ -16,30 +17,14 @@ import {
   type DefaultEdgeOptions,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import PersonNode from "./PersonNode";
-import MovieNode from "./MovieNode";
-import ActedInEdge from "./ActedInEdge";
-import {
-  getConnectedActors,
-  getRandomActor,
-  getTestGraph,
-} from "../server-requests";
-
+import { getConnectedActors, getRandomActor } from "../server-requests";
+/*@typescript-eslint  no-explicit-any: "off"*/
 const initialNodes: Node[] = [
   { id: "1", data: { label: "Node 1" }, position: { x: 5, y: 5 } },
   { id: "2", data: { label: "Node 2" }, position: { x: 5, y: 100 } },
 ];
 
 const initialEdges: Edge[] = [{ id: "e1-2", source: "1", target: "2" }];
-
-const nodeTypes = {
-  personNode: PersonNode,
-  movieNode: MovieNode,
-};
-
-const edgeTypes = {
-  actedInEdge: ActedInEdge,
-};
 
 const fitViewOptions: FitViewOptions = {
   padding: 0.2,
@@ -71,28 +56,10 @@ export default function Graph() {
     (connection) => setEdges((eds) => addEdge(connection, eds)),
     [setEdges]
   );
-  function randomCoordinates(
-    minX: number,
-    maxX: number,
-    minY: number,
-    maxY: number
-  ) {
-    const minCeiledX: number = Math.ceil(minX);
-    const maxFlooredX: number = Math.floor(maxX);
-    const minCeiledY: number = Math.ceil(minY);
-    const maxFlooredY: number = Math.floor(maxY);
-    const x: number = Math.floor(
-      Math.random() * (maxFlooredX - minCeiledX + 1) + minCeiledX
-    );
-    const y: number = Math.floor(
-      Math.random() * (maxFlooredY - minCeiledY + 1) + minCeiledY
-    );
-    return [x, y];
-  }
 
   function trimDuplicateNodes(nodes: any[]) {
-    let result = nodes.reduce((accumulator, current) => {
-      let exists = accumulator.find((item: any) => {
+    const result = nodes.reduce((accumulator, current) => {
+      const exists = accumulator.find((item: any) => {
         return item.id === current.id;
       });
       if (!exists) {
@@ -102,99 +69,15 @@ export default function Graph() {
     }, []);
     return result;
   }
-  async function getTestNodes() {
-    let records = await getTestGraph();
-    console.log(records);
-    if (records !== undefined) {
-      //console.log(records[0]);
-      const personRecords: string[] = records[0];
-      const movieRecords: string[] = records[1];
-      const edgeRecords: string[] = records[2];
-      let personNodes: Node[] = [];
-      let movieNodes: Node[] = [];
-      let movieEdges: Edge[] = [];
-      let startingXPosition: number = 5;
-      let startingYPosition: number = 5;
 
-      //get person nodes
-      for (let i = 0; i < personRecords.length; i++) {
-        startingXPosition += 30;
-        startingYPosition += 30;
-        let position: number[] = [startingXPosition, startingYPosition];
-        //parse json
-        //console.log(personRecords[i]);
-        let personRecord = JSON.parse(JSON.stringify(personRecords[i]));
-
-        //console.log(personRecord);
-        //console.log(personRecord["id"].low);
-        const person: Node = {
-          id: `${personRecord["id"].low}`,
-          type: "personNode",
-          data: { label: `${personRecord["data"].name}` },
-          position: { x: position[0], y: position[1] },
-        };
-        //console.log(person);
-        personNodes.push(person);
-      }
-
-      //get movie nodes
-      for (let i = 0; i < movieRecords.length; i++) {
-        startingXPosition += 30;
-        startingYPosition += 30;
-        let position: number[] = [startingXPosition, startingYPosition];
-
-        //parse json
-        const movieRecord = JSON.parse(JSON.stringify(movieRecords[i]));
-        // console.log("movie record");
-        //console.log(movieRecord);
-        //check if movie has already been added; if so, skip to next record
-
-        const movie: Node = {
-          id: `${movieRecord["id"]}`,
-          type: "movieNode",
-          data: {
-            label: `${movieRecord["data"].title}, ${movieRecord["data"].released.low}`,
-          },
-          position: { x: position[0], y: position[1] },
-        };
-        movieNodes.push(movie);
-      }
-
-      //get edges
-      for (let i = 0; i < edgeRecords.length; i++) {
-        const edgeRecord = JSON.parse(JSON.stringify(edgeRecords[i]));
-        //console.log("edge record");
-        //console.log(edgeRecord);
-        const edge: Edge = {
-          id: `e${edgeRecord["data"].from.low}-${edgeRecord["data"].to}`,
-          type: "actedInEdge",
-          source: `${edgeRecord["data"].from.low}`,
-          target: `${edgeRecord["data"].to}`,
-        };
-        movieEdges.push(edge);
-      }
-      // console.log("personNodes:");
-      // console.log(trimDuplicateNodes(personNodes));
-      // console.log("movieNodes:");
-      // console.log(trimDuplicateNodes(movieNodes));
-      // console.log("edges:");
-      // console.log(edges);
-
-      //trim duplicate objects
-      setNodes(
-        trimDuplicateNodes(personNodes).concat(trimDuplicateNodes(movieNodes))
-      );
-      setEdges(edges);
-    }
-  }
   async function startGame() {
     resetNodes();
-    let records = await getRandomActor();
-    let startingActorArray: Node[] = [];
+    let records = await getRandomActor(undefined);
+    const startingActorArray: Node[] = [];
     let name: string = "";
     console.log(records);
     if (records !== undefined) {
-      let startingRecord = JSON.parse(JSON.stringify(records[0]));
+      const startingRecord = JSON.parse(JSON.stringify(records[0]));
 
       const startingActor: Node = {
         id: `${startingRecord["id"].low}`,
@@ -210,30 +93,34 @@ export default function Graph() {
     } else {
       return;
     }
+    records = await getRandomActor(currentNodeName);
   }
 
   async function getConnectedNodes(name: string) {
-    let records = await getConnectedActors(name);
+    const records = await getConnectedActors(name);
     if (records !== undefined) {
       const personRecords: string[] = records[0];
-      let personNodes: Node[] = [];
+      const personNodes: Node[] = [];
       let startingXPosition: number = nodes[0].position.x;
-      let startingYPosition: number = nodes[0].position.y;
+      const startingYPosition: number = nodes[0].position.y;
 
       //get person nodes
       for (let i = 0; i < personRecords.length; i++) {
         startingXPosition = 70;
-        let position: number[] = [startingXPosition, startingYPosition];
+        const position: number[] = [startingXPosition, startingYPosition];
         //parse json
         //console.log(personRecords[i]);
-        let personRecord = JSON.parse(JSON.stringify(personRecords[i]));
+        const personRecord = JSON.parse(JSON.stringify(personRecords[i]));
 
         //console.log(personRecord);
         //console.log(personRecord["id"].low);
         const person: Node = {
           id: `${personRecord["id"].low}`,
           type: "personNode",
-          data: { label: `${personRecord["data"].name}` },
+          data: {
+            label: `${personRecord["data"].name}`,
+            movie: `${personRecord["data"].movie}`,
+          },
           position: { x: position[0], y: position[1] },
         };
         //console.log(person);
@@ -248,7 +135,7 @@ export default function Graph() {
       // console.log(edges);
 
       //trim duplicate objects
-      let uniquePersonNodes = trimDuplicateNodes(personNodes);
+      const uniquePersonNodes = trimDuplicateNodes(personNodes);
       return [uniquePersonNodes];
     }
   }
@@ -256,11 +143,11 @@ export default function Graph() {
   async function search(formData: any) {
     const query = formData.get("query");
     if (currentNodeName !== undefined) {
-      let connectedNodes = await getConnectedNodes(currentNodeName);
+      const connectedNodes = await getConnectedNodes(currentNodeName);
       if (connectedNodes !== undefined) {
-        let connectedActorNodes: Node[] = connectedNodes[0];
+        const connectedActorNodes: Node[] = connectedNodes[0];
         for (let i = 0; i < connectedActorNodes.length; i++) {
-          let newNode: Node = connectedActorNodes[i];
+          const newNode: Node = connectedActorNodes[i];
           if (query === newNode.data.label) {
             const edge: Edge[] = [
               {
@@ -268,11 +155,12 @@ export default function Graph() {
                 type: "actedInEdge",
                 source: `${currentNodeId}`,
                 target: `${newNode["id"]}`,
+                label: `${newNode.data.movie}`,
               },
             ];
-            let newNodes: Node[] = nodes.concat(newNode);
+            const newNodes: Node[] = nodes.concat(newNode);
             setNodes(newNodes);
-            let newEdges: Edge[] = edges.concat(edge);
+            const newEdges: Edge[] = edges.concat(edge);
             setEdges(newEdges);
             setCurrentNodeName(String(newNode.data.label));
             setCurrentNodeId(newNode.id);
@@ -289,9 +177,6 @@ export default function Graph() {
   }
   return (
     <div style={{ height: 700, width: 1000 }}>
-      <button id="testbutton" onClick={getTestNodes}>
-        Click to get Test Graph
-      </button>
       <button id="gamebutton" onClick={startGame}>
         Click to start game
       </button>
