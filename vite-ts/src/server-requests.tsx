@@ -39,7 +39,7 @@ export async function getConnectedActors(actor_name: string) {
   return [connectedActors];
 }
 
-export async function getRandomActor(exclude: string | undefined = undefined) {
+export async function getRandomActor(exclude: string | undefined) {
   const URI = "neo4j://localhost";
   let driver: any;
   try {
