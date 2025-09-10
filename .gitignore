@@ -2,3 +2,4 @@
 /vite-js/dist
 /vite-ts/node_modules
 /data
+/db/.env
