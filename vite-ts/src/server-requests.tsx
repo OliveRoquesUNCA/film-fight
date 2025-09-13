@@ -1,6 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import neo4j from "neo4j-driver";
+import { MovieDb } from "moviedb-promise";
 
+//note: create your own .env folder in this directory, and add your api key in it labeled API_KEY=[api key here]
+const tmdbConfig = {
+  apikey: `${import.meta.env.VITE_API_KEY}`,
+};
+const moviedb = new MovieDb(tmdbConfig.apikey);
 export async function getConnectedActors(actor_name: string) {
   const URI = "neo4j://localhost";
   let driver: any;
@@ -78,3 +84,17 @@ export async function getRandomActor(exclude: string | undefined) {
 
   return actor;
 }
+
+export const searchPerson = async (req: any) => {
+  console.log(`query: ${req}`);
+  const parameters = {
+    query: req,
+    page: 1,
+  };
+  try {
+    const res = await moviedb.searchPerson(parameters);
+    return res.results;
+  } catch (error) {
+    return "error" + console.error();
+  }
+};

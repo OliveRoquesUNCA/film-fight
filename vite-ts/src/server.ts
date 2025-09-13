@@ -5,12 +5,13 @@ import { Server, Socket } from "socket.io";
 interface Session {
   players: string[];
   scores: Record<string, number>;
+  times: Record<string, number>;
 }
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "http://localhost:3001", methods: ["GET", "POST"] },
+  cors: { origin: "http://localhost:3001/game/", methods: ["GET", "POST"] },
 });
 
 const sessions: Record<string, Session> = {};
@@ -21,7 +22,7 @@ io.on("connection", (socket: Socket) => {
   socket.on("join-session", (sessionId: string) => {
     const playerId = socket.id;
     if (!sessions[sessionId]) {
-      sessions[sessionId] = { players: [], scores: {} };
+      sessions[sessionId] = { players: [], scores: {}, times: {} };
     }
 
     const session = sessions[sessionId];
@@ -41,6 +42,18 @@ io.on("connection", (socket: Socket) => {
             session.scores[playerId]
         );
         io.emit("update-scores", session.scores);
+      }
+    });
+    socket.on("time-update", ({ playerId, time }) => {
+      if (session.times[playerId] != null) {
+        session.times[playerId] = time;
+        console.log(
+          "updating time for session" +
+            playerId +
+            " : " +
+            session.times[playerId]
+        );
+        io.emit("update-times", session.times);
       }
     });
   });

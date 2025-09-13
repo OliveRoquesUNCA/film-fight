@@ -20,7 +20,6 @@ import {
 import "@xyflow/react/dist/style.css";
 import { getConnectedActors, getRandomActor } from "../server-requests";
 import { socket } from "../socket";
-import { SocketAddress } from "net";
 
 interface GraphProps {
   playerId: string;
@@ -48,12 +47,10 @@ export default function Graph({ sessionId }: { sessionId: string }) {
   const [currentNodeName, setCurrentNodeName] = useState<string>();
   const [currentNodeId, setCurrentNodeId] = useState<string>();
   const [destinationNodeName, setDestinationNodeName] = useState<string>();
-  const [destinationNodeId, setDestinationNodeId] = useState<string>();
-  const [destinationReached, setDestinationReached] = useState<
-    boolean | undefined
-  >();
+  const [time, setTime] = useState<number>();
   const [playerId, setPlayerId] = useState<string>("");
   const [sharedScores, setSharedScores] = useState<Record<string, number>>({});
+  const [sharedTimes, setSharedTimes] = useState<Record<string, number>>({});
 
   useEffect(() => {
     socket.connect();
@@ -70,6 +67,12 @@ export default function Graph({ sessionId }: { sessionId: string }) {
     socket.on("update-scores", (newScores: Record<string, number>) => {
       console.log("receiving updated score");
       setSharedScores(newScores);
+    });
+
+    socket.on("update-times", (newTimes: Record<string, number>) => {
+      console.log("receiving updated time");
+      setSharedTimes(newTimes);
+      checkTimes();
     });
 
     return () => {
@@ -105,7 +108,6 @@ export default function Graph({ sessionId }: { sessionId: string }) {
 
   async function startGame() {
     await resetNodes();
-    setDestinationReached(false);
     let records = await getRandomActor(undefined);
     const startingActorArray: Node[] = [];
     let name: string = "";
@@ -125,6 +127,7 @@ export default function Graph({ sessionId }: { sessionId: string }) {
       name = startingRecord["data"].name;
       setCurrentNodeName(name);
       setCurrentNodeId(startingActor["id"]);
+      setTime(Date.now());
     } else {
       return;
     }
@@ -148,7 +151,6 @@ export default function Graph({ sessionId }: { sessionId: string }) {
       setNodes((nodes) => nodes.concat(newNodesDestination));
 
       setDestinationNodeName(destinationRecord["data"].name);
-      setDestinationNodeId(destinationActor["id"]);
     } else {
       return;
     }
@@ -167,11 +169,7 @@ export default function Graph({ sessionId }: { sessionId: string }) {
         startingXPosition = 70;
         const position: number[] = [startingXPosition, startingYPosition];
         //parse json
-        //console.log(personRecords[i]);
         const personRecord = JSON.parse(JSON.stringify(personRecords[i]));
-
-        //console.log(personRecord);
-        //console.log(personRecord["id"].low);
         const person: Node = {
           id: `${personRecord["id"].low}`,
           type: "personNode",
@@ -184,13 +182,6 @@ export default function Graph({ sessionId }: { sessionId: string }) {
         //console.log(person);
         personNodes.push(person);
       }
-
-      // console.log("personNodes:");
-      // console.log(trimDuplicateNodes(personNodes));
-      // console.log("movieNodes:");
-      // console.log(trimDuplicateNodes(movieNodes));
-      // console.log("edges:");
-      // console.log(edges);
 
       //trim duplicate objects
       const uniquePersonNodes = trimDuplicateNodes(personNodes);
@@ -217,8 +208,12 @@ export default function Graph({ sessionId }: { sessionId: string }) {
               },
             ];
             if (newNode.data.label === destinationNodeName) {
-              setDestinationReached(true);
-              winRound();
+              if (time !== undefined) {
+                const timeElapsed = Date.now() - time;
+                setTime(timeElapsed);
+              }
+
+              checkTimes();
               break;
             }
             const newNodes: Node[] = nodes.concat(newNode);
@@ -234,6 +229,12 @@ export default function Graph({ sessionId }: { sessionId: string }) {
       }
     }
   }
+
+  async function checkTimes() {
+    socket.emit("time-update", { playerId, time });
+    if (Object.keys(sharedTimes).length == 2) {
+    }
+  }
   function winRound() {
     socket.emit("score-update", { playerId });
     console.log(sharedScores);
@@ -242,13 +243,13 @@ export default function Graph({ sessionId }: { sessionId: string }) {
   async function resetNodes() {
     setNodes(initialNodes);
     setEdges(initialEdges);
-    setDestinationReached(false);
   }
 
   return (
     <div style={{ height: 700, width: 1000 }}>
       <h1>Welcome player {playerId}</h1>
       <pre>{JSON.stringify(sharedScores)}</pre>
+      <pre>{JSON.stringify(sharedTimes)}</pre>
       <button
         id="gamebutton"
         onClick={() => {
