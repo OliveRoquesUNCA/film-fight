@@ -51,6 +51,7 @@ export default function Graph({ sessionId }: { sessionId: string }) {
   const [playerId, setPlayerId] = useState<string>("");
   const [sharedScores, setSharedScores] = useState<Record<string, number>>({});
   const [sharedTimes, setSharedTimes] = useState<Record<string, number>>({});
+  const [hintActors, setHintActors] = useState<string[] | any[]>([]);
 
   useEffect(() => {
     socket.connect();
@@ -212,7 +213,7 @@ export default function Graph({ sessionId }: { sessionId: string }) {
                 const timeElapsed = Date.now() - time;
                 setTime(timeElapsed);
               }
-
+              setHintActors([]);
               checkTimes();
               break;
             }
@@ -233,6 +234,11 @@ export default function Graph({ sessionId }: { sessionId: string }) {
   async function checkTimes() {
     socket.emit("time-update", { playerId, time });
     if (Object.keys(sharedTimes).length == 2) {
+      let bestTime = sharedTimes[0];
+      for (let players in sharedTimes) {
+        if (sharedTimes[players] < bestTime) {
+        }
+      }
     }
   }
   function winRound() {
@@ -243,6 +249,21 @@ export default function Graph({ sessionId }: { sessionId: string }) {
   async function resetNodes() {
     setNodes(initialNodes);
     setEdges(initialEdges);
+  }
+
+  async function checkHint() {
+    if (currentNodeName !== undefined) {
+      const connectedNodes = await getConnectedNodes(currentNodeName);
+      if (connectedNodes !== undefined) {
+        const connectedActorNodes: Node[] = connectedNodes[0];
+        let hints: string[] | any = [];
+        for (let i = 0; i < connectedActorNodes.length; i++) {
+          const newNode: Node = connectedActorNodes[i];
+          hints.push(newNode.data.label);
+        }
+        setHintActors((hintActors: any[]) => hintActors.concat(hints));
+      }
+    }
   }
 
   return (
@@ -268,7 +289,8 @@ export default function Graph({ sessionId }: { sessionId: string }) {
         <button type="submit">Submit</button>
       </form>
       <button onClick={winRound}>win round</button>
-
+      <button onClick={checkHint}>Hint: Display connected actors</button>
+      <pre>{hintActors}</pre>
       <ReactFlow
         nodes={nodes}
         edges={edges}

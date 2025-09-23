@@ -4,7 +4,7 @@ export default function Navbar() {
   return (
     <div>
       <Link to="/Admin">Admin</Link>
-      <Link to="/Game">Graph</Link>
+      <Link to="/Game">Game</Link>
     </div>
   );
 }

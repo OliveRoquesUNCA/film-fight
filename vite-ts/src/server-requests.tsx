@@ -11,7 +11,7 @@ export async function getConnectedActors(actor_name: string) {
   const URI = "neo4j://localhost";
   let driver: any;
   try {
-    driver = neo4j.driver(URI, neo4j.auth.basic("", ""));
+    driver = neo4j.driver(URI, neo4j.auth.basic("neo4j", "your_password"));
     await driver.getServerInfo();
   } catch (err: any) {
     console.log(`Connection error\n${err}\nCause: ${err.cause}`);
@@ -49,7 +49,7 @@ export async function getRandomActor(exclude: string | undefined) {
   const URI = "neo4j://localhost";
   let driver: any;
   try {
-    driver = neo4j.driver(URI, neo4j.auth.basic("", ""));
+    driver = neo4j.driver(URI, neo4j.auth.basic("neo4j", "your_password"));
     await driver.getServerInfo();
   } catch (err: any) {
     console.log(`Connection error\n${err}\nCause: ${err.cause}`);
