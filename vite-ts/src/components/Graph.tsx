@@ -234,10 +234,14 @@ export default function Graph({ sessionId }: { sessionId: string }) {
   async function checkTimes() {
     socket.emit("time-update", { playerId, time });
     if (Object.keys(sharedTimes).length == 2) {
-      let bestTime = sharedTimes[0];
-      for (let players in sharedTimes) {
-        if (sharedTimes[players] < bestTime) {
+      let bestTime = sharedTimes[playerId].valueOf;
+      for (let player in sharedTimes) {
+        if (sharedTimes[player].valueOf > bestTime) {
+          bestTime = sharedTimes[player].valueOf;
         }
+      }
+      if (bestTime == sharedTimes[playerId].valueOf) {
+        winRound();
       }
     }
   }
