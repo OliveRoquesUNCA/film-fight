@@ -14,20 +14,23 @@ import {
   type OnConnect,
   type OnNodesChange,
   type OnEdgesChange,
-  type OnNodeDrag,
   type DefaultEdgeOptions,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { getConnectedActors, getRandomActor } from "../server-requests";
+import {
+  getConnectedActors,
+  getRandomActors,
+  shortestPath,
+} from "../server-requests";
 import { socket } from "../socket";
-
-interface GraphProps {
-  playerId: string;
-}
+import { Player } from "../server";
+import PathDisplayWrapper from "./PathDisplayWrapper";
 
 const initialNodes: Node[] = [];
 
 const initialEdges: Edge[] = [];
+
+const initialHints: String[] = [""];
 
 const fitViewOptions: FitViewOptions = {
   padding: 0.2,
@@ -37,49 +40,35 @@ const defaultEdgeOptions: DefaultEdgeOptions = {
   animated: true,
 };
 
-const onNodeDrag: OnNodeDrag = (_, node) => {
-  console.log("drag event", node.data);
-};
-
-export default function Graph({ sessionId }: { sessionId: string }) {
+export default function Graph() {
   const [nodes, setNodes] = useState<Node[]>(initialNodes);
   const [edges, setEdges] = useState<Edge[]>(initialEdges);
   const [currentNodeName, setCurrentNodeName] = useState<string>();
   const [currentNodeId, setCurrentNodeId] = useState<string>();
   const [destinationNodeName, setDestinationNodeName] = useState<string>();
-  const [time, setTime] = useState<number>();
-  const [playerId, setPlayerId] = useState<string>("");
-  const [sharedScores, setSharedScores] = useState<Record<string, number>>({});
-  const [sharedTimes, setSharedTimes] = useState<Record<string, number>>({});
-  const [hintActors, setHintActors] = useState<string[] | any[]>([]);
+  const [currentPlayer, setCurrentPlayer] = useState<Player | null>(null);
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [hintActors, setHintActors] = useState<string[] | any[]>(initialHints);
+  const [pathNodes, setPathNodes] = useState<any[]>([]);
+  const [scoreUpdate, setScoreUpdate] = useState<any>(null);
 
   useEffect(() => {
+    //connect once when component mounts
     socket.connect();
-    socket.on("connect", () => {
-      console.log("connected with ID:", socket.id);
-      socket.emit("join-session", sessionId);
+    socket.on("playerInfo", (data: Player) => {
+      setCurrentPlayer(data);
     });
 
-    socket.on("session-joined", ({ playerId }: GraphProps) => {
-      console.log("session joined as:", playerId);
-      setPlayerId(playerId);
-    });
-
-    socket.on("update-scores", (newScores: Record<string, number>) => {
-      console.log("receiving updated score");
-      setSharedScores(newScores);
-    });
-
-    socket.on("update-times", (newTimes: Record<string, number>) => {
-      console.log("receiving updated time");
-      setSharedTimes(newTimes);
-      checkTimes();
+    socket.on("playersUpdated", (playerList: Player[]) => {
+      setPlayers(playerList);
     });
 
     return () => {
+      socket.off("playerInfo");
+      socket.off("playersUpdated");
       socket.disconnect();
     };
-  }, [sessionId]);
+  }, []);
 
   const onNodesChange: OnNodesChange = useCallback(
     (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
@@ -108,53 +97,40 @@ export default function Graph({ sessionId }: { sessionId: string }) {
   }
 
   async function startGame() {
+    console.log("button pressed");
+    //reset nodes
+    setNodes(initialNodes);
+    setEdges(initialEdges);
+    setCurrentNodeName("");
+    setDestinationNodeName("");
+    setCurrentNodeId("");
     await resetNodes();
-    let records = await getRandomActor(undefined);
-    const startingActorArray: Node[] = [];
-    let name: string = "";
+    console.log("nodes reset");
+    //get random actors
+    let records: any = await getRandomActors();
     console.log(records);
-    if (records !== undefined) {
-      const startingRecord = JSON.parse(JSON.stringify(records[0]));
+    let firstActor = records.actor1;
+    let lastActor = records.actor2;
 
-      const startingActor: Node = {
-        id: `${startingRecord["id"].low}`,
-        type: "personNode",
-        data: { label: `${startingRecord["data"].name}` },
-        position: { x: 0, y: 0 },
-      };
-      startingActorArray.push(startingActor);
-      const newNodes: Node[] = nodes.concat(startingActorArray);
-      setNodes(newNodes);
-      name = startingRecord["data"].name;
-      setCurrentNodeName(name);
-      setCurrentNodeId(startingActor["id"]);
-      setTime(Date.now());
-    } else {
-      return;
-    }
-    records = await getRandomActor(currentNodeName);
-    const destinationActorArray = [];
-    console.log(records);
-    if (records !== undefined) {
-      const destinationRecord = JSON.parse(JSON.stringify(records[0]));
+    const startingActorNode: Node = {
+      id: `${firstActor.id}`,
+      data: { label: `${firstActor.name}` },
+      position: { x: 0, y: 0 },
+    };
 
-      const destinationActor: Node = {
-        id: `${destinationRecord["id"].low}`,
-        type: "personNode",
-        data: { label: `${destinationRecord["data"].name}` },
-        position: { x: 200, y: 200 },
-        style: {
-          color: `blue`,
-        },
-      };
-      destinationActorArray.push(destinationActor);
-      const newNodesDestination: Node[] = nodes.concat(destinationActorArray);
-      setNodes((nodes) => nodes.concat(newNodesDestination));
+    const lastActorNode: Node = {
+      id: `${lastActor.id}`,
+      data: { label: `${lastActor.name}` },
+      position: { x: 200, y: 200 },
+    };
+    //   startingActorArray.push(startingActor);
+    const newNodes: Node[] = nodes.concat(startingActorNode, lastActorNode);
+    setNodes(newNodes);
+    setCurrentNodeName(firstActor.name);
 
-      setDestinationNodeName(destinationRecord["data"].name);
-    } else {
-      return;
-    }
+    setCurrentNodeId(firstActor.id);
+    setDestinationNodeName(lastActor.name);
+    socket.emit("startGame");
   }
 
   async function getConnectedNodes(name: string) {
@@ -173,7 +149,6 @@ export default function Graph({ sessionId }: { sessionId: string }) {
         const personRecord = JSON.parse(JSON.stringify(personRecords[i]));
         const person: Node = {
           id: `${personRecord["id"].low}`,
-          type: "personNode",
           data: {
             label: `${personRecord["data"].name}`,
             movie: `${personRecord["data"].movie}`,
@@ -191,6 +166,8 @@ export default function Graph({ sessionId }: { sessionId: string }) {
   }
 
   async function search(formData: any) {
+    console.log(`current node name: ${currentNodeName}`);
+    console.log(`destination node name: ${destinationNodeName}`);
     const query = formData.get("query");
     if (currentNodeName !== undefined) {
       const connectedNodes = await getConnectedNodes(currentNodeName);
@@ -202,27 +179,32 @@ export default function Graph({ sessionId }: { sessionId: string }) {
             const edge: Edge[] = [
               {
                 id: `e${currentNodeId}-${newNode["id"]}`,
-                type: "actedInEdge",
                 source: `${currentNodeId}`,
                 target: `${newNode["id"]}`,
                 label: `${newNode.data.movie}`,
               },
             ];
-            if (newNode.data.label === destinationNodeName) {
-              if (time !== undefined) {
-                const timeElapsed = Date.now() - time;
-                setTime(timeElapsed);
-              }
-              setHintActors([]);
-              checkTimes();
+            setCurrentNodeName(String(newNode.data.label));
+            setCurrentNodeId(newNode.id);
+
+            //win condition
+            if (String(newNode.data.label) === destinationNodeName) {
+              console.log(
+                `current node name ${String(
+                  newNode.data.label
+                )} matches destination node name ${destinationNodeName}`
+              );
+              setHintActors(initialHints);
+              //socket.emit("time-update", { playerId, time });
+              socket.emit("winRound");
+              winRound();
               break;
             }
             const newNodes: Node[] = nodes.concat(newNode);
             setNodes(newNodes);
             const newEdges: Edge[] = edges.concat(edge);
             setEdges(newEdges);
-            setCurrentNodeName(String(newNode.data.label));
-            setCurrentNodeId(newNode.id);
+
             break;
           }
         }
@@ -231,32 +213,33 @@ export default function Graph({ sessionId }: { sessionId: string }) {
     }
   }
 
-  async function checkTimes() {
-    socket.emit("time-update", { playerId, time });
-    if (Object.keys(sharedTimes).length == 2) {
-      let bestTime = sharedTimes[playerId].valueOf;
-      for (let player in sharedTimes) {
-        if (sharedTimes[player].valueOf > bestTime) {
-          bestTime = sharedTimes[player].valueOf;
-        }
-      }
-      if (bestTime == sharedTimes[playerId].valueOf) {
-        winRound();
-      }
-    }
-  }
+  // async function checkTimes() {
+  //   if (Object.keys(sharedTimes).length == 2) {
+  //     let bestTime = sharedTimes[playerId].valueOf;
+  //     for (let player in sharedTimes) {
+  //       if (sharedTimes[player].valueOf > bestTime) {
+  //         bestTime = sharedTimes[player].valueOf;
+  //       }
+  //     }
+  //     if (bestTime === sharedTimes[playerId].valueOf) {
+  //       winRound();
+  //     }
+  //   }
+  // }
   function winRound() {
-    socket.emit("score-update", { playerId });
-    console.log(sharedScores);
+    socket.emit("incrementScore");
+    console.log(players);
   }
 
   async function resetNodes() {
     setNodes(initialNodes);
     setEdges(initialEdges);
+    setHintActors(initialHints);
   }
 
   async function checkHint() {
     if (currentNodeName !== undefined) {
+      setHintActors([""]);
       const connectedNodes = await getConnectedNodes(currentNodeName);
       if (connectedNodes !== undefined) {
         const connectedActorNodes: Node[] = connectedNodes[0];
@@ -264,24 +247,66 @@ export default function Graph({ sessionId }: { sessionId: string }) {
         for (let i = 0; i < connectedActorNodes.length; i++) {
           const newNode: Node = connectedActorNodes[i];
           hints.push(newNode.data.label);
+          if (i < connectedActorNodes.length - 1) {
+            hints.push(", ");
+          } else {
+            hints.push(" ");
+          }
         }
-        setHintActors((hintActors: any[]) => hintActors.concat(hints));
+        setHintActors(hints);
+      }
+    }
+  }
+
+  function PlayerComponent({ player }: any) {
+    if (!player) {
+      return (
+        <h2 style={{ color: "white" }}>Connecting to websocket interface...</h2>
+      );
+    } else {
+      return <h2 style={{ color: "white" }}>Welcome {player.name}</h2>;
+    }
+  }
+
+  function ScoreboardComponent({ players }: any) {
+    if (currentPlayer === null) {
+      return <h3 style={{ color: "cornsilk" }}>Loading scoreboard...</h3>;
+    } else {
+      return (
+        <ul style={{ color: "cornsilk" }}>
+          {players.map((p: any) => (
+            <li style={{ color: "cornsilk" }} key={p.id}>
+              {p.name} — {p.score}
+              {p.id === currentPlayer.id ? " (You)" : ""}
+            </li>
+          ))}
+        </ul>
+      );
+    }
+  }
+
+  async function handlePathDisplay() {
+    if (currentNodeName && destinationNodeName) {
+      const pathObj = await shortestPath(currentNodeName, destinationNodeName);
+      if (pathObj) {
+        console.log(`segments: ${pathObj.segments}`);
+        setPathNodes(pathObj.segments);
       }
     }
   }
 
   return (
     <div style={{ height: 700, width: 1000 }}>
-      <h1>Welcome player {playerId}</h1>
-      <pre>{JSON.stringify(sharedScores)}</pre>
-      <pre>{JSON.stringify(sharedTimes)}</pre>
-      <button
-        id="gamebutton"
-        onClick={() => {
-          resetNodes();
-          startGame();
-        }}
-      >
+      <h3 style={{ color: "blue" }}>All players</h3>
+      <PlayerComponent player={currentPlayer}></PlayerComponent>
+      <ScoreboardComponent players={players}></ScoreboardComponent>
+      {scoreUpdate && (
+        <p>
+          🎉 {players[scoreUpdate.playerId]?.name} got a point with time{" "}
+          {scoreUpdate.duration}ms
+        </p>
+      )}
+      <button id="gamebutton" onClick={() => startGame()}>
         Click to start game
       </button>
       <button id="reset board" onClick={resetNodes}>
@@ -294,14 +319,15 @@ export default function Graph({ sessionId }: { sessionId: string }) {
       </form>
       <button onClick={winRound}>win round</button>
       <button onClick={checkHint}>Hint: Display connected actors</button>
-      <pre>{hintActors}</pre>
+      <button onClick={handlePathDisplay}>Hint: Update shortest path</button>
+      <PathDisplayWrapper nodes={pathNodes}></PathDisplayWrapper>
+      <p style={{ color: "blue" }}>Connected actors: {hintActors}</p>
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        onNodeDrag={onNodeDrag}
         fitView
         fitViewOptions={fitViewOptions}
         defaultEdgeOptions={defaultEdgeOptions}

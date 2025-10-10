@@ -1,5 +1,7 @@
-/vite-js/node_modules
-/vite-js/dist
+/vite-ts/dist
 /vite-ts/node_modules
 /data
 /vite-ts/.env
+/vite-ts/src/populatedb.js
+populatedb.js
+top_movies.json
