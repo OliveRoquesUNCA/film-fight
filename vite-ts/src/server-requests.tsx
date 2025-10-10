@@ -5,7 +5,7 @@ export async function getConnectedActors(actor_name: string) {
   const URI = "neo4j://localhost";
   let driver: any;
   try {
-    driver = neo4j.driver(URI, neo4j.auth.basic("", ""));
+    driver = neo4j.driver(URI, neo4j.auth.basic("neo4j", "your_password"));
     await driver.getServerInfo();
   } catch (err: any) {
     console.log(`Connection error\n${err}\nCause: ${err.cause}`);
@@ -39,42 +39,107 @@ export async function getConnectedActors(actor_name: string) {
   return [connectedActors];
 }
 
-export async function getRandomActor(exclude: string | undefined) {
+export async function shortestPath(startActor: string, endActor: string) {
   const URI = "neo4j://localhost";
   let driver: any;
   try {
-    driver = neo4j.driver(URI, neo4j.auth.basic("", ""));
+    driver = neo4j.driver(URI, neo4j.auth.basic("neo4j", "your_password"));
     await driver.getServerInfo();
   } catch (err: any) {
     console.log(`Connection error\n${err}\nCause: ${err.cause}`);
     await driver.close();
     return;
   }
-  const actor: any[] = [];
-  let actorData = {};
 
-  let match = true;
-  while (match) {
-    const query = `MATCH (a)-[:ACTED_IN]->(t) RETURN ID(a) AS actor_id, a.name, rand() as r ORDER BY r LIMIT 1`;
-    const result = await driver.executeQuery(
-      `${query}`,
-      {},
-      {
-        database: "neo4j",
-      }
-    );
-    const record = result.records[0];
+  const query = `
+      MATCH (a:Person {name: $startActor}), (b:Person {name: $endActor})
+      MATCH path = shortestPath((a)-[:ACTED_IN*]-(b))
+      RETURN path
+    `;
 
-    actorData = {
-      id: record.get("actor_id"),
-      data: { name: record.get("a.name") },
-    };
-    if (record.get("a.name") !== exclude || exclude === undefined) {
-      match = false;
-    }
+  const result = await driver.executeQuery(`${query}`, {
+    startActor,
+    endActor,
+  });
+
+  if (result.records.length === 0) {
+    console.log(`No path found between ${startActor} and ${endActor}.`);
+    return null;
   }
-  actor.push(actorData);
-  await driver.close();
 
-  return actor;
+  const record = result.records[0];
+  const path = record.get("path");
+
+  //get detailed info about nodes
+  const nodes = path.segments
+    ? path.segments.map((segment: any) => ({
+        start: {
+          labels: segment.start.labels,
+          properties: segment.start.properties,
+        },
+        relationship: {
+          type: segment.relationship.type,
+          properties: segment.relationship.properties,
+        },
+        end: {
+          labels: segment.end.labels,
+          properties: segment.end.properties,
+        },
+      }))
+    : [];
+  await driver.close();
+  return {
+    start: startActor,
+    end: endActor,
+    length: path.length,
+    segments: nodes,
+  };
+}
+
+export async function getRandomActors() {
+  const URI = "neo4j://localhost";
+  let driver: any;
+  try {
+    driver = neo4j.driver(URI, neo4j.auth.basic("neo4j", "your_password"));
+    await driver.getServerInfo();
+    console.log("neo4j driver connected");
+  } catch (err: any) {
+    console.log(`Connection error\n${err}\nCause: ${err.cause}`);
+    await driver.close();
+    return;
+  }
+  //ensures path exists
+  const query = `
+      MATCH (a:Person)
+      WHERE a.name IS NOT NULL AND a.name <> ""
+      WITH a, rand() AS r
+      ORDER BY r
+      LIMIT 1
+
+      MATCH (a)-[:ACTED_IN*1..6]-(b:Person)
+      WHERE a <> b AND b.name IS NOT NULL AND b.name <> ""
+      WITH a, b, rand() AS r2
+      ORDER BY r2
+      LIMIT 1
+
+      RETURN 
+        a.id AS aId, a.name AS aName,
+        b.id AS bId, b.name AS bName
+    `;
+  console.log("executing query");
+  const result = await driver.executeQuery(`${query}`);
+  console.log("returning records");
+  const record = result.records[0];
+  console.log(record);
+  await driver.close();
+  return {
+    actor1: {
+      id: record.get("aId"),
+      name: record.get("aName"),
+    },
+    actor2: {
+      id: record.get("bId"),
+      name: record.get("bName"),
+    },
+  };
 }
