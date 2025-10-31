@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useReducer } from "react";
 import {
   ReactFlow,
   addEdge,
@@ -17,20 +17,16 @@ import {
   type DefaultEdgeOptions,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import {
-  getConnectedActors,
-  getRandomActors,
-  shortestPath,
-} from "../server-requests";
-import { socket } from "../socket";
-import { Player } from "../server";
-import PathDisplayWrapper from "./PathDisplayWrapper";
+import { getConnectedActors, shortestPath } from "../server-requests";
+import { ensureConnected } from "../socketHelpers";
+import { useSocket } from "./SocketContext";
+import PathDisplay from "./PathDisplay";
 
 const initialNodes: Node[] = [];
 
 const initialEdges: Edge[] = [];
 
-const initialHints: String[] = [""];
+const initialHints: String[] = [];
 
 const fitViewOptions: FitViewOptions = {
   padding: 0.2,
@@ -40,33 +36,69 @@ const defaultEdgeOptions: DefaultEdgeOptions = {
   animated: true,
 };
 
-export default function Graph() {
+export default function Graph({
+  roomId,
+  players,
+  difficulty,
+  records,
+  onReturnToLobby,
+}: {
+  roomId: string;
+  players: any[];
+  difficulty: string;
+  records: any;
+  onReturnToLobby: () => void;
+}) {
   const [nodes, setNodes] = useState<Node[]>(initialNodes);
   const [edges, setEdges] = useState<Edge[]>(initialEdges);
   const [currentNodeName, setCurrentNodeName] = useState<string>();
+  const [startingNodeName, setStartingNodeName] = useState<string>();
   const [currentNodeId, setCurrentNodeId] = useState<string>();
+  const [destinationNodeId, setDestinationNodeId] = useState<string>();
   const [destinationNodeName, setDestinationNodeName] = useState<string>();
-  const [currentPlayer, setCurrentPlayer] = useState<Player | null>(null);
-  const [players, setPlayers] = useState<Player[]>([]);
   const [hintActors, setHintActors] = useState<string[] | any[]>(initialHints);
-  const [pathNodes, setPathNodes] = useState<any[]>([]);
-  const [scoreUpdate, setScoreUpdate] = useState<any>(null);
+  const [pathNodes, setPathNodes] = useState<any>();
+  const [status, setStatus] = useState("waiting");
+  const [result, setResult] = useState<any>(null);
+  const [, forceUpdate] = useReducer((x) => x + 1, 0);
+  const [currentPlayers, setCurrentPlayers] = useState(players);
+
+  const socket = useSocket();
+
+  const difficultyMessage =
+    difficulty === "hard"
+      ? "No restrictions on starting actors, no matter how obscure!"
+      : "Only the most popular actors are chosen for the starting two!";
+
+  const difficultyColor = difficulty === "hard" ? "red" : "green";
 
   useEffect(() => {
-    //connect once when component mounts
-    socket.connect();
-    socket.on("playerInfo", (data: Player) => {
-      setCurrentPlayer(data);
+    socket.on("playerStarted", (data) => {
+      console.log(`setting status: ${data.name} has started!`);
+      setStatus(`${data.name} has started!`);
     });
 
-    socket.on("playersUpdated", (playerList: Player[]) => {
-      setPlayers(playerList);
+    socket.on("gameOver", (data) => {
+      setStatus(
+        `Game Over! Winner: ${data.winner} with time ${data.finalTime}`
+      );
+      console.log(`game over! data: ${data}`);
+      setResult(data);
+      if (data.players) setCurrentPlayers(data.players);
+      forceUpdate;
+    });
+
+    socket.on("playerLeft", (name) => {
+      console.log(`${name} has left the game`);
+      setStatus(`${name} left the game`);
     });
 
     return () => {
-      socket.off("playerInfo");
-      socket.off("playersUpdated");
-      socket.disconnect();
+      socket.off("playerStarted");
+      socket.off("gameOver");
+      socket.off("playerLeft");
+      socket.off("connect");
+      socket.off("disconnect");
     };
   }, []);
 
@@ -97,7 +129,7 @@ export default function Graph() {
   }
 
   async function startGame() {
-    console.log("button pressed");
+    console.log("start button pressed");
     //reset nodes
     setNodes(initialNodes);
     setEdges(initialEdges);
@@ -106,8 +138,7 @@ export default function Graph() {
     setCurrentNodeId("");
     await resetNodes();
     console.log("nodes reset");
-    //get random actors
-    let records: any = await getRandomActors();
+    //get random actors from component parameters
     console.log(records);
     let firstActor = records.actor1;
     let lastActor = records.actor2;
@@ -116,20 +147,34 @@ export default function Graph() {
       id: `${firstActor.id}`,
       data: { label: `${firstActor.name}` },
       position: { x: 0, y: 0 },
+      style: {
+        backgroundColor: "#fff", // Node background
+        color: "#333", // Node text color
+        border: "2px solid #63b3ed",
+        padding: 10,
+        fontWeight: "bold",
+      },
     };
 
     const lastActorNode: Node = {
       id: `${lastActor.id}`,
       data: { label: `${lastActor.name}` },
       position: { x: 200, y: 200 },
+      style: {
+        backgroundColor: "#77f1bcff",
+        color: "#333", // Node text color
+        border: "2px solid #63b3ed",
+        padding: 10,
+        fontWeight: "bold",
+      },
     };
-    //   startingActorArray.push(startingActor);
     const newNodes: Node[] = nodes.concat(startingActorNode, lastActorNode);
     setNodes(newNodes);
     setCurrentNodeName(firstActor.name);
-
+    setStartingNodeName(firstActor.name);
     setCurrentNodeId(firstActor.id);
     setDestinationNodeName(lastActor.name);
+    setDestinationNodeId(lastActor.id);
     socket.emit("startGame");
   }
 
@@ -154,6 +199,13 @@ export default function Graph() {
             movie: `${personRecord["data"].movie}`,
           },
           position: { x: position[0], y: position[1] },
+          style: {
+            backgroundColor: "#fff", // Node background
+            color: "#333", // Node text color
+            border: "2px solid #63b3ed",
+            padding: 10,
+            fontWeight: "bold",
+          },
         };
         //console.log(person);
         personNodes.push(person);
@@ -176,7 +228,34 @@ export default function Graph() {
         for (let i = 0; i < connectedActorNodes.length; i++) {
           const newNode: Node = connectedActorNodes[i];
           if (query === newNode.data.label) {
-            const edge: Edge[] = [
+            setCurrentNodeName(String(newNode.data.label));
+            setCurrentNodeId(newNode.id);
+            let newEdges: Edge[] = [];
+            let edge: Edge[] = [];
+            //win condition
+            if (String(newNode.data.label) === destinationNodeName) {
+              edge = [
+                {
+                  id: `e${currentNodeId}-${destinationNodeId}`,
+                  source: `${currentNodeId}`,
+                  target: `${destinationNodeId}`,
+                  label: `${newNode.data.movie}`,
+                },
+              ];
+              console.log(
+                `current node name ${String(
+                  newNode.data.label
+                )} matches destination node name ${destinationNodeName}`
+              );
+              setHintActors(initialHints);
+              newEdges = edges.concat(edge);
+              setEdges(newEdges);
+              console.log(`last edge: ${JSON.stringify(newEdges)}`);
+              forceUpdate;
+              winRound();
+              break;
+            }
+            edge = [
               {
                 id: `e${currentNodeId}-${newNode["id"]}`,
                 source: `${currentNodeId}`,
@@ -184,26 +263,12 @@ export default function Graph() {
                 label: `${newNode.data.movie}`,
               },
             ];
-            setCurrentNodeName(String(newNode.data.label));
-            setCurrentNodeId(newNode.id);
-
-            //win condition
-            if (String(newNode.data.label) === destinationNodeName) {
-              console.log(
-                `current node name ${String(
-                  newNode.data.label
-                )} matches destination node name ${destinationNodeName}`
-              );
-              setHintActors(initialHints);
-              //socket.emit("time-update", { playerId, time });
-              socket.emit("winRound");
-              winRound();
-              break;
-            }
+            console.log(`setting new edge ${JSON.stringify(newEdges)}`);
+            newEdges = edges.concat(edge);
+            setEdges(newEdges);
+            forceUpdate;
             const newNodes: Node[] = nodes.concat(newNode);
             setNodes(newNodes);
-            const newEdges: Edge[] = edges.concat(edge);
-            setEdges(newEdges);
 
             break;
           }
@@ -213,21 +278,12 @@ export default function Graph() {
     }
   }
 
-  // async function checkTimes() {
-  //   if (Object.keys(sharedTimes).length == 2) {
-  //     let bestTime = sharedTimes[playerId].valueOf;
-  //     for (let player in sharedTimes) {
-  //       if (sharedTimes[player].valueOf > bestTime) {
-  //         bestTime = sharedTimes[player].valueOf;
-  //       }
-  //     }
-  //     if (bestTime === sharedTimes[playerId].valueOf) {
-  //       winRound();
-  //     }
-  //   }
-  // }
-  function winRound() {
-    socket.emit("incrementScore");
+  async function winRound() {
+    await ensureConnected();
+    console.log(
+      `emitting winGame for room ${roomId} with socket id ${socket.id}`
+    );
+    socket.emit("winGame");
     console.log(players);
   }
 
@@ -258,35 +314,16 @@ export default function Graph() {
     }
   }
 
-  function PlayerComponent({ player }: any) {
-    if (!player) {
-      return (
-        <h2 style={{ color: "white" }}>Connecting to websocket interface...</h2>
-      );
-    } else {
-      return <h2 style={{ color: "white" }}>Welcome {player.name}</h2>;
-    }
-  }
-
-  function ScoreboardComponent({ players }: any) {
-    if (currentPlayer === null) {
-      return <h3 style={{ color: "cornsilk" }}>Loading scoreboard...</h3>;
-    } else {
-      return (
-        <ul style={{ color: "cornsilk" }}>
-          {players.map((p: any) => (
-            <li style={{ color: "cornsilk" }} key={p.id}>
-              {p.name} — {p.score}
-              {p.id === currentPlayer.id ? " (You)" : ""}
-            </li>
-          ))}
-        </ul>
-      );
-    }
+  function returnToLobby() {
+    socket.emit("returnToLobby");
+    onReturnToLobby();
   }
 
   async function handlePathDisplay() {
     if (currentNodeName && destinationNodeName) {
+      console.log(
+        `finding shortest path between ${currentNodeName} and ${destinationNodeName}`
+      );
       const pathObj = await shortestPath(currentNodeName, destinationNodeName);
       if (pathObj) {
         console.log(`segments: ${pathObj.segments}`);
@@ -296,45 +333,228 @@ export default function Graph() {
   }
 
   return (
-    <div style={{ height: 700, width: 1000 }}>
-      <h3 style={{ color: "blue" }}>All players</h3>
-      <PlayerComponent player={currentPlayer}></PlayerComponent>
-      <ScoreboardComponent players={players}></ScoreboardComponent>
-      {scoreUpdate && (
-        <p>
-          🎉 {players[scoreUpdate.playerId]?.name} got a point with time{" "}
-          {scoreUpdate.duration}ms
-        </p>
-      )}
-      <button id="gamebutton" onClick={() => startGame()}>
-        Click to start game
-      </button>
-      <button id="reset board" onClick={resetNodes}>
-        Click to reset board
-      </button>
-      <form action={search}>
-        Guess the next actor:
-        <input name="query"></input>
-        <button type="submit">Submit</button>
-      </form>
-      <button onClick={winRound}>win round</button>
-      <button onClick={checkHint}>Hint: Display connected actors</button>
-      <button onClick={handlePathDisplay}>Hint: Update shortest path</button>
-      <PathDisplayWrapper nodes={pathNodes}></PathDisplayWrapper>
-      <p style={{ color: "blue" }}>Connected actors: {hintActors}</p>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        fitView
-        fitViewOptions={fitViewOptions}
-        defaultEdgeOptions={defaultEdgeOptions}
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "flex-start",
+        height: "100vh", // full viewport
+        width: "100vw", // full width
+        backgroundColor: "#0b0b0d",
+        color: "#e0e0e0",
+        fontFamily: "'Inter', sans-serif",
+        overflowY: "auto", // scrolls if needed
+        overflowX: "hidden",
+        padding: "0",
+        margin: "0",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "1200px",
+          backgroundColor: "#1c1c21",
+          borderRadius: "16px",
+          boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+          padding: "32px 24px",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: "20px",
+          boxSizing: "border-box",
+          flex: "1 0 auto",
+        }}
       >
-        <Background />
-        <Controls />
-      </ReactFlow>
+        {/* Header */}
+        <h2 style={{ color: "#fff", margin: 0 }}>
+          Game Room: <span style={{ color: "#63b3ed" }}>{roomId}</span>
+        </h2>
+
+        {/* Player List */}
+        <div style={{ textAlign: "center" }}>
+          <h3 style={{ color: "#63b3ed", marginBottom: "8px" }}>Players</h3>
+          <ul
+            style={{
+              listStyle: "none",
+              padding: 0,
+              display: "flex",
+              gap: "24px",
+              justifyContent: "center",
+              flexWrap: "wrap",
+              margin: 0,
+            }}
+          >
+            {currentPlayers.map((p) => (
+              <li key={p.name}>
+                <strong>{p.name}</strong>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Difficulty */}
+        <div style={{ textAlign: "center" }}>
+          <h3>
+            Difficulty:{" "}
+            <span
+              style={{
+                color: difficultyColor,
+                fontWeight: "bold",
+                textTransform: "capitalize",
+              }}
+            >
+              {difficulty}
+            </span>
+          </h3>
+          <p style={{ color: "#aaa", margin: "4px 0" }}>{difficultyMessage}</p>
+          <p style={{ color: "#888" }}>Status: {status}</p>
+        </div>
+
+        {/* Controls */}
+        {!result ? (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "12px",
+              marginTop: "10px",
+            }}
+          >
+            <button className="game-btn" onClick={startGame}>
+              Start Race
+            </button>
+
+            <div
+              style={{
+                display: "flex",
+                gap: "8px",
+                flexWrap: "wrap",
+                justifyContent: "center",
+              }}
+            >
+              <button className="game-btn" onClick={checkHint}>
+                Hint: Show connected actors to current actor
+              </button>
+              <button className="game-btn" onClick={handlePathDisplay}>
+                Hint: Show shortest path to destination
+              </button>
+              <button
+                className="game-btn debug-btn"
+                onClick={winRound}
+                style={{ opacity: 0.7 }}
+              >
+                (debug) Win Round
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div
+            style={{
+              textAlign: "center",
+              display: "flex",
+              flexDirection: "column",
+              gap: "10px",
+            }}
+          >
+            <h3 style={{ color: "#90ee90" }}>Winner: {result.winner}</h3>
+            <pre
+              style={{
+                background: "#2b2b33",
+                padding: "10px",
+                borderRadius: "8px",
+                textAlign: "left",
+                width: "80%",
+                margin: "0 auto",
+                overflowX: "auto",
+              }}
+            >
+              {JSON.stringify(result.times, null, 2)}
+            </pre>
+            <div
+              style={{ display: "flex", gap: "8px", justifyContent: "center" }}
+            >
+              <button className="game-btn" onClick={returnToLobby}>
+                Return to Lobby
+              </button>
+            </div>
+          </div>
+        )}
+        {startingNodeName ? (
+          <p style={{ color: "#63b3ed" }}>
+            Find a path from {startingNodeName} to {destinationNodeName}
+          </p>
+        ) : (
+          <p style={{ color: "#63b3ed" }}>Waiting to start game</p>
+        )}
+        <p style={{ color: "#63b3ed" }}>
+          Actors connected to {currentNodeName}:{" "}
+          {hintActors ||
+            "click the 'show connected actors' button to show possible next guesses"}
+        </p>
+        {currentNodeName ? (
+          <p>
+            Shortest path between {currentNodeName} and {destinationNodeName}:
+          </p>
+        ) : (
+          <p></p>
+        )}
+        {pathNodes ? <PathDisplay nodes={pathNodes}></PathDisplay> : <p></p>}
+        <form
+          action={search}
+          style={{
+            display: "flex",
+            gap: "8px",
+            alignItems: "center",
+            justifyContent: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <label>Guess the next actor:</label>
+          <input
+            name="query"
+            style={{
+              backgroundColor: "#2c2c34",
+              border: "1px solid #444",
+              color: "#fff",
+              padding: "6px 10px",
+              borderRadius: "6px",
+            }}
+          />
+          <button className="game-btn" type="submit">
+            Submit
+          </button>
+        </form>
+        {/* ReactFlow */}
+        <div
+          style={{
+            flexGrow: 1,
+            width: "100%",
+            height: "70vh", // take majority of screen height
+            backgroundColor: "#141418",
+            borderRadius: "12px",
+            border: "1px solid #333",
+            boxShadow: "inset 0 0 15px rgba(255,255,255,0.05)",
+            overflow: "hidden",
+            marginTop: "20px",
+          }}
+        >
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            fitView
+            fitViewOptions={fitViewOptions}
+            defaultEdgeOptions={defaultEdgeOptions}
+          >
+            <Background />
+            <Controls />
+          </ReactFlow>
+        </div>
+      </div>
     </div>
   );
 }

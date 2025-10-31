@@ -1,6 +1,42 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import neo4j from "neo4j-driver";
 
+export async function getConnectedMovies(actor_name: string) {
+  const URI = "neo4j://localhost";
+  let driver: any;
+  try {
+    driver = neo4j.driver(URI, neo4j.auth.basic("neo4j", "your_password"));
+    await driver.getServerInfo();
+  } catch (err: any) {
+    console.log(`Connection error\n${err}\nCause: ${err.cause}`);
+    await driver.close();
+    return;
+  }
+
+  const query = `MATCH (n:Person{name: $name})-[a:ACTED_IN]-(m:Movie)-[b:ACTED_IN]-(p:Person) RETURN DISTINCT ID(m) AS connected_id, m.title`;
+  const result = await driver.executeQuery(
+    `${query}`,
+    { name: actor_name },
+    {
+      database: "neo4j",
+    }
+  );
+  const connectedMovies: any[] = [];
+
+  for (let i = 0; i < result.records.length; i++) {
+    const record = result.records[i];
+    const movieData = {
+      id: record.get("connected_id"),
+      data: { title: record.get("m.title") },
+    };
+    connectedMovies.push(movieData);
+  }
+
+  await driver.close();
+
+  return [connectedMovies];
+}
+
 export async function getConnectedActors(actor_name: string) {
   const URI = "neo4j://localhost";
   let driver: any;
@@ -96,7 +132,7 @@ export async function shortestPath(startActor: string, endActor: string) {
   };
 }
 
-export async function getRandomActors() {
+export async function getRandomActors(difficulty = "easy") {
   const URI = "neo4j://localhost";
   let driver: any;
   try {
@@ -108,8 +144,28 @@ export async function getRandomActors() {
     await driver.close();
     return;
   }
-  //ensures path exists
-  const query = `
+  let query = "";
+  //check for difficulty; if easy, only choose most popular actors ranked by TMDB
+  if (difficulty === "easy") {
+    query = `
+      MATCH (a:Person)
+      WHERE a.name IS NOT NULL AND a.name <> "" AND a.popularity > 3.9
+      WITH a, rand() AS r
+      ORDER BY r
+      LIMIT 1
+
+      MATCH (a)-[:ACTED_IN*1..6]-(b:Person)
+      WHERE a <> b AND b.name IS NOT NULL AND b.name <> "" AND b.popularity > 3.9
+      WITH a, b, rand() AS r2
+      ORDER BY r2
+      LIMIT 1
+
+      RETURN 
+        a.id AS aId, a.name AS aName,
+        b.id AS bId, b.name AS bName
+    `;
+  } else {
+    query = `
       MATCH (a:Person)
       WHERE a.name IS NOT NULL AND a.name <> ""
       WITH a, rand() AS r
@@ -126,6 +182,8 @@ export async function getRandomActors() {
         a.id AS aId, a.name AS aName,
         b.id AS bId, b.name AS bName
     `;
+  }
+
   console.log("executing query");
   const result = await driver.executeQuery(`${query}`);
   console.log("returning records");
