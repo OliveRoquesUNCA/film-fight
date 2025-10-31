@@ -1,24 +1,13 @@
-import "./App.css";
-import Home from "./Home";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
-import Admin from "./Admin";
-import Game from "./Game";
+import Lobby from "./Lobby";
+import { SocketProvider } from "./components/SocketContext";
 
 function App() {
   return (
-    <>
-      <div>
-        <div>
-          <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="admin" element={<Admin />} />
-              <Route path="game" element={<Game />} />
-            </Routes>
-          </BrowserRouter>
-        </div>
-      </div>
-    </>
+    <div>
+      <SocketProvider>
+        <Lobby></Lobby>
+      </SocketProvider>
+    </div>
   );
 }
 
