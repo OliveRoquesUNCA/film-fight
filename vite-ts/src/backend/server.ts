@@ -2,6 +2,11 @@
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
+import {
+  getConnectedActors,
+  getRandomActors,
+  shortestPath,
+} from "./server-requests";
 
 const app = express();
 const server = http.createServer(app);
@@ -73,7 +78,10 @@ io.on("connection", (socket) => {
   );
 
   // Accept challenge
-  socket.on("acceptChallenge", (challengerId, records) => {
+  socket.on("acceptChallenge", async (challengerId) => {
+    let records = await getRandomActors();
+    console.log("records from socket call");
+    console.log(records);
     const pending = Object.values(pendingChallenges).find(
       (c) => c.from === challengerId && c.to === socket.id
     );
@@ -168,6 +176,25 @@ io.on("connection", (socket) => {
       finalTime: finalTime,
       players: playerList,
     });
+  });
+
+  //send queries to server-requests API
+  io.on("getConnectedActors", async (name) => {
+    console.log("sending getConnectedActors request to server-requests");
+    let records = await getConnectedActors(name);
+    if (records !== undefined) {
+      socket.emit("getConnectedActorsResponse", records);
+    }
+  });
+
+  io.on("getShortestPath", async (startNodeName, destNodeName) => {
+    console.log(
+      `sending shortest path request between ${startNodeName} and ${destNodeName}`
+    );
+    let records = await shortestPath(startNodeName, destNodeName);
+    if (records !== undefined) {
+      socket.emit("getShortestPathResponse", records);
+    }
   });
 
   // Return players to lobby

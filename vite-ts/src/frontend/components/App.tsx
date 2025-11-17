@@ -1,5 +1,5 @@
 import Lobby from "./Lobby";
-import { SocketProvider } from "./components/SocketContext";
+import { SocketProvider } from "./SocketContext";
 
 function App() {
   return (

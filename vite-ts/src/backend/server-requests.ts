@@ -1,8 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import neo4j from "neo4j-driver";
-
 export async function getConnectedMovies(actor_name: string) {
-  const URI = "neo4j://localhost";
+  const URI = "bolt://localhost:7687";
   let driver: any;
   try {
     driver = neo4j.driver(URI, neo4j.auth.basic("neo4j", "your_password"));
@@ -38,7 +37,7 @@ export async function getConnectedMovies(actor_name: string) {
 }
 
 export async function getConnectedActors(actor_name: string) {
-  const URI = "neo4j://localhost";
+  const URI = "bolt://localhost:7687";
   let driver: any;
   try {
     driver = neo4j.driver(URI, neo4j.auth.basic("neo4j", "your_password"));
@@ -59,8 +58,7 @@ export async function getConnectedActors(actor_name: string) {
   );
 
   const connectedActors: any[] = [];
-  //let movies: any[] = [];
-  //let edges: any[] = [];
+
   for (let i = 0; i < result.records.length; i++) {
     const record = result.records[i];
     const actorData = {
@@ -76,7 +74,7 @@ export async function getConnectedActors(actor_name: string) {
 }
 
 export async function shortestPath(startActor: string, endActor: string) {
-  const URI = "neo4j://localhost";
+  const URI = "bolt://localhost:7687";
   let driver: any;
   try {
     driver = neo4j.driver(URI, neo4j.auth.basic("neo4j", "your_password"));
@@ -133,7 +131,7 @@ export async function shortestPath(startActor: string, endActor: string) {
 }
 
 export async function getRandomActors(difficulty = "easy") {
-  const URI = "neo4j://localhost";
+  const URI = "bolt://localhost:7687";
   let driver: any;
   try {
     driver = neo4j.driver(URI, neo4j.auth.basic("neo4j", "your_password"));
@@ -149,13 +147,13 @@ export async function getRandomActors(difficulty = "easy") {
   if (difficulty === "easy") {
     query = `
       MATCH (a:Person)
-      WHERE a.name IS NOT NULL AND a.name <> "" AND a.popularity > 3.9
+      WHERE a.name IS NOT NULL AND a.name <> "" AND a.popularity > 3.0
       WITH a, rand() AS r
       ORDER BY r
       LIMIT 1
 
       MATCH (a)-[:ACTED_IN*1..6]-(b:Person)
-      WHERE a <> b AND b.name IS NOT NULL AND b.name <> "" AND b.popularity > 3.9
+      WHERE a <> b AND b.name IS NOT NULL AND b.name <> "" AND b.popularity > 3.0
       WITH a, b, rand() AS r2
       ORDER BY r2
       LIMIT 1

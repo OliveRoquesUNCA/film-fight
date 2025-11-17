@@ -1,0 +1,1 @@
+{"root":["./src/vite-env.d.ts","./src/frontend/components/App.tsx","./src/frontend/components/Graph.tsx","./src/frontend/components/Lobby.tsx","./src/frontend/components/Navbar.tsx","./src/frontend/components/PathDisplay.tsx","./src/frontend/components/SocketContext.tsx","./src/frontend/components/main.tsx"],"errors":true,"version":"5.7.3"}

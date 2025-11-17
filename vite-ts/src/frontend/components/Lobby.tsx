@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Graph from "./components/Graph";
-import { getRandomActors } from "./server-requests";
-import { useSocket } from "./components/SocketContext";
+import Graph from "./Graph";
+import { useSocket } from "./SocketContext";
 
 export default function Lobby() {
   const [name, setName] = useState("");
@@ -51,8 +50,7 @@ export default function Lobby() {
   };
 
   const acceptChallenge = async () => {
-    let records = await getRandomActors();
-    socket.emit("acceptChallenge", challenge.fromId, records);
+    socket.emit("acceptChallenge", challenge.fromId);
     setChallenge(null);
   };
 
@@ -87,7 +85,7 @@ export default function Lobby() {
         Welcome to Film Fight!
       </h2>
       {!registered ? (
-        // Registration screen (centered)
+        // Registration screen
         <div
           style={{
             flex: 1,
