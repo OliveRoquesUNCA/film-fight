@@ -34,6 +34,12 @@ const defaultEdgeOptions: DefaultEdgeOptions = {
   animated: true,
 };
 
+/**
+ * This component renders the game for all players. the acceptChallenge websocket passes in the room Id, players,
+ * difficulty, the records of the starting actors, and a function to return to the lobby.
+ * @param param0 object containing the room Id, players, difficulty, records of starting actors, and onReturnToLobby function
+ * @returns
+ */
 export default function Graph({
   roomId,
   players,
@@ -70,6 +76,9 @@ export default function Graph({
 
   const difficultyColor = difficulty === "hard" ? "red" : "green";
 
+  /**
+   * Handles socket calls for setting status
+   */
   useEffect(() => {
     socket.on("playerStarted", (data) => {
       console.log(`setting status: ${data.name} has started!`);
@@ -100,6 +109,9 @@ export default function Graph({
     };
   }, []);
 
+  /**
+   * react flow needs these to update graph state
+   */
   const onNodesChange: OnNodesChange = useCallback(
     (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
     [setNodes]
@@ -109,6 +121,11 @@ export default function Graph({
     [setEdges]
   );
 
+  /**
+   * Safety function in case db call returns duplicate nodes
+   * @param nodes nodes to check for duplicates
+   * @returns nodes trimmed of duplicates
+   */
   function trimDuplicateNodes(nodes: any[]) {
     const result = nodes.reduce((accumulator, current) => {
       const exists = accumulator.find((item: any) => {
@@ -122,6 +139,9 @@ export default function Graph({
     return result;
   }
 
+  /**
+   * Handles starting the game; resets state of nodes/edges and replaces with component params
+   */
   async function startGame() {
     //console.log("start button pressed");
     //reset nodes
@@ -178,6 +198,11 @@ export default function Graph({
     forceUpdate;
   }
 
+  /**
+   * Helper function for many game functions; returns array of actor nodes connected to the given name via 1 movie
+   * @param name name of actor to check connected actors of
+   * @returns array of connected actor nodes
+   */
   async function getConnectedActors(name: string) {
     let actorRecords = await getConnectedNodes(name);
     if (actorRecords !== undefined) {
@@ -217,6 +242,13 @@ export default function Graph({
     }
   }
 
+  /**
+   * Search is called whenever the player guesses an actor. If they guess an actor that would win the game,
+   * it makes an edge to the destination actor and then ends the game. If they guess a correct actor
+   * that is not the destination actor, it creates a new node for that actor and an edge pointing to it.
+   * @param formData data from text box input
+   * @returns
+   */
   async function search(formData: any) {
     console.log(`current node name: ${currentNodeName}`);
     console.log(`destination node name: ${destinationNodeName}`);
@@ -279,6 +311,9 @@ export default function Graph({
     }
   }
 
+  /**
+   * called when the win round game state is reached. Calls web socket to handle that
+   */
   async function winRound() {
     console.log(
       `emitting winGame for room ${roomId} with socket id ${socket.id}`
@@ -287,12 +322,18 @@ export default function Graph({
     console.log(players);
   }
 
+  /**
+   * Helper function to reset game state
+   */
   async function resetNodes() {
     setNodes(initialNodes);
     setEdges(initialEdges);
     setHintActors(initialHints);
   }
 
+  /**
+   * Checks and displays actors connected to the current actor when the button is pressed.
+   */
   async function checkHintActors() {
     if (currentNodeName !== undefined) {
       setHintActors([""]);
@@ -317,11 +358,20 @@ export default function Graph({
     }
   }
 
+  /**
+   * Helper function to return to the lobby when the game is done
+   */
   function returnToLobby() {
     socket.emit("returnToLobby");
     onReturnToLobby();
   }
 
+  /**
+   * Function to handle getConnectedActors() call via websockets; websockets handle actual API call to database,
+   * and this function awaits the result of that.
+   * @param name name of actor to check connected actor nodes of
+   * @returns Promise of the results of the database query
+   */
   function getConnectedNodes(name: string): Promise<any> {
     return new Promise((resolve, _reject) => {
       // Listen for a single response
@@ -336,6 +386,14 @@ export default function Graph({
       console.log("client emitting getConnectedActors");
     });
   }
+
+  /**
+   * Function to handle handleShortestPath() via websockets. Websockets handle actual API call to database,
+   * and this function awaits the result of that.
+   * @param startNodeName node to start path from
+   * @param destNodeName node to end path on
+   * @returns Promise of database query result
+   */
   function getShortestPath(
     startNodeName: string,
     destNodeName: string
@@ -410,6 +468,9 @@ export default function Graph({
   //   }
   // }
 
+  /**
+   * Handles the display of the shortest path
+   */
   async function handlePathDisplay() {
     if (currentNodeName && destinationNodeName) {
       console.log(

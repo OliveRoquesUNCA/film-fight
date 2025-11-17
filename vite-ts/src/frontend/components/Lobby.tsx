@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import Graph from "./Graph";
 import { useSocket } from "./SocketContext";
 
+/**
+ * Lobby that all players enter on connection. Websockets handle connections and disconnections, as well as
+ * starting and ending the game.
+ */
 export default function Lobby() {
   const [name, setName] = useState("");
   const [registered, setRegistered] = useState(false);
