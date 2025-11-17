@@ -80,7 +80,7 @@ export async function shortestPath(startActor: string, endActor: string) {
     driver = neo4j.driver(URI, neo4j.auth.basic("neo4j", "your_password"));
     await driver.getServerInfo();
   } catch (err: any) {
-    console.log(`Connection error\n${err}\nCause: ${err.cause}`);
+    //console.log(`Connection error\n${err}\nCause: ${err.cause}`);
     await driver.close();
     return;
   }
@@ -136,7 +136,7 @@ export async function getRandomActors(difficulty = "easy") {
   try {
     driver = neo4j.driver(URI, neo4j.auth.basic("neo4j", "your_password"));
     await driver.getServerInfo();
-    console.log("neo4j driver connected");
+    //console.log("neo4j driver connected");
   } catch (err: any) {
     console.log(`Connection error\n${err}\nCause: ${err.cause}`);
     await driver.close();
@@ -182,11 +182,11 @@ export async function getRandomActors(difficulty = "easy") {
     `;
   }
 
-  console.log("executing query");
+  //console.log("executing query");
   const result = await driver.executeQuery(`${query}`);
-  console.log("returning records");
+  //console.log("returning records");
   const record = result.records[0];
-  console.log(record);
+  //console.log(record);
   await driver.close();
   return {
     actor1: {

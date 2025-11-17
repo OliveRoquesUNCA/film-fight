@@ -55,14 +55,11 @@ export default function Graph({
   const [destinationNodeId, setDestinationNodeId] = useState<string>();
   const [destinationNodeName, setDestinationNodeName] = useState<string>();
   const [hintActors, setHintActors] = useState<string[] | any[]>(initialHints);
-  //const [hintMovies, setHintMovies] = useState<string[] | any[]>(initialMovies);
   const [pathNodes, setPathNodes] = useState<any>();
   const [status, setStatus] = useState("waiting");
   const [result, setResult] = useState<any>(null);
   const [, forceUpdate] = useReducer((x) => x + 1, 0);
   const [currentPlayers, setCurrentPlayers] = useState(players);
-  //const revealTimer = useRef(null);
-  //const hiddenNames = useRef([]);
 
   const socket = useSocket();
 
@@ -126,7 +123,7 @@ export default function Graph({
   }
 
   async function startGame() {
-    console.log("start button pressed");
+    //console.log("start button pressed");
     //reset nodes
     setNodes(initialNodes);
     setEdges(initialEdges);
@@ -134,11 +131,11 @@ export default function Graph({
     setDestinationNodeName("");
     setCurrentNodeId("");
     await resetNodes();
-    console.log("nodes reset");
+    //console.log("nodes reset");
 
     //get random actors from component parameters
-    console.log("getting records from params");
-    console.log(records);
+    //console.log("getting records from params");
+    //console.log(records);
     let firstActor = records.actor1;
     let lastActor = records.actor2;
 
@@ -162,7 +159,7 @@ export default function Graph({
       style: {
         backgroundColor: "#77f1bcff",
         color: "#333", // Node text color
-        border: "2px solid #63b3ed",
+        border: "2px solid #87f366ff",
         padding: 10,
         fontWeight: "bold",
       },
@@ -174,7 +171,11 @@ export default function Graph({
     setCurrentNodeId(firstActor.id);
     setDestinationNodeName(lastActor.name);
     setDestinationNodeId(lastActor.id);
+    forceUpdate;
+    //await handleHintNodes();
+    forceUpdate;
     socket.emit("startGame");
+    forceUpdate;
   }
 
   async function getConnectedActors(name: string) {
@@ -184,7 +185,7 @@ export default function Graph({
       const personNodes: Node[] = [];
       let startingXPosition: number = nodes[0].position.x;
       const startingYPosition: number = nodes[0].position.y;
-
+      let uniquePersonNodes: Node[] = [];
       //get person nodes
       for (let i = 0; i < personRecords.length; i++) {
         startingXPosition = 70;
@@ -208,22 +209,12 @@ export default function Graph({
         };
         //console.log(person);
         personNodes.push(person);
-        const uniquePersonNodes = trimDuplicateNodes(personNodes);
-        return [uniquePersonNodes];
       }
+      console.log("unique person nodes from getconnectedactors:");
+      uniquePersonNodes = trimDuplicateNodes(personNodes);
+      console.log(uniquePersonNodes);
+      return [uniquePersonNodes];
     }
-  }
-
-  function getConnectedNodes(name: string): Promise<any[][]> {
-    return new Promise((resolve, _reject) => {
-      // Listen for a single response
-      socket.once("getConnectedActorsResponse", (data) => {
-        resolve(data);
-      });
-
-      // Emit request
-      socket.emit("getConnectedActors", name);
-    });
   }
 
   async function search(formData: any) {
@@ -278,7 +269,8 @@ export default function Graph({
             forceUpdate;
             const newNodes: Node[] = nodes.concat(newNode);
             setNodes(newNodes);
-
+            //await handleHintNodes();
+            forceUpdate;
             break;
           }
         }
@@ -304,9 +296,12 @@ export default function Graph({
   async function checkHintActors() {
     if (currentNodeName !== undefined) {
       setHintActors([""]);
+      console.log("getting hint connected actor nodes");
       const connectedNodes = await getConnectedActors(currentNodeName);
       if (connectedNodes !== undefined) {
         const connectedActorNodes: Node[] = connectedNodes[0];
+        console.log("connected actor nodes: ");
+        console.log(connectedActorNodes);
         let hints: string[] | any = [];
         for (let i = 0; i < connectedActorNodes.length; i++) {
           const newNode: Node = connectedActorNodes[i];
@@ -322,45 +317,98 @@ export default function Graph({
     }
   }
 
-  // async function checkHintMovies() {
-  //   if (currentNodeName !== undefined) {
-  //     setHintMovies([""]);
-  //     const connectedMovies = await getConnectedMovies(currentNodeName);
-  //     if (connectedMovies !== undefined) {
-  //       let hints: string[] | any = [];
-  //       for (let i = 0; i < connectedMovies.length; i++) {
-  //         const newMovie = connectedMovies[i];
-  //         hints.push(newMovie);
-  //         if (i < connectedMovies.length - 1) {
-  //           hints.push(", ");
-  //         } else {
-  //           hints.push(" ");
-  //         }
-  //       }
-  //       setHintMovies(hints);
-  //     }
-  //   }
-  // }
-
   function returnToLobby() {
     socket.emit("returnToLobby");
     onReturnToLobby();
   }
 
+  function getConnectedNodes(name: string): Promise<any> {
+    return new Promise((resolve, _reject) => {
+      // Listen for a single response
+      const requestId = Date.now();
+      socket.once(`getConnectedActorsResponse_${requestId}`, (data) => {
+        console.log("client receiving getConnectedActorsResponse");
+        resolve(data);
+      });
+
+      // Emit request
+      socket.emit("getConnectedActors", name, requestId);
+      console.log("client emitting getConnectedActors");
+    });
+  }
   function getShortestPath(
     startNodeName: string,
     destNodeName: string
   ): Promise<any> {
     return new Promise((resolve, _reject) => {
       // Listen for a single response
-      socket.once("getShortestPathResponse", (data) => {
+      const requestId = Date.now();
+      socket.once(`getShortestPathResponse_${requestId}`, (data) => {
+        console.log("client receiving getShortestPathResponse");
         resolve(data);
       });
 
       // Emit request
-      socket.emit("getShortestPath", startNodeName, destNodeName);
+      socket.emit("getShortestPath", startNodeName, destNodeName, requestId);
+      console.log("client emitting getShortestPath");
+      setTimeout(() => _reject("timeout"), 8000);
     });
   }
+
+  // async function handleHintNodes() {
+  //   if (currentNodeName && destinationNodeName) {
+  //     console.log(
+  //       `finding connected nodes for ${currentNodeName} and ${destinationNodeName}`
+  //     );
+  //     const currentHintObj = await getConnectedActors(currentNodeName);
+  //     const destinationHintObj = await getConnectedActors(destinationNodeName);
+  //     if (currentHintObj && destinationHintObj) {
+  //       const currentHintNodes = currentHintObj[0];
+  //       const destinationHintNodes = destinationHintObj[0];
+  //       console.log(`current hint node:${currentHintNodes}`);
+  //       console.log(`dest hint nodes: ${destinationHintNodes}`);
+  //       let newNodes: Node[] = [];
+  //       let newEdges: Edge[] = [];
+  //       let edge: Edge[] = [];
+
+  //       //current node hints
+  //       for (let i = 0; i < currentHintNodes.length; i++) {
+  //         const newNode: Node = currentHintNodes[i];
+  //         edge = [
+  //           {
+  //             id: `e${currentNodeId}-${newNode["id"]}`,
+  //             source: `${currentNodeId}`,
+  //             target: `${newNode["id"]}`,
+  //             label: `${newNode.data.movie}`,
+  //           },
+  //         ];
+  //         newNodes = nodes.concat(newNode);
+  //         setNodes(newNodes);
+  //         newEdges = edges.concat(edge);
+  //         setEdges(newEdges);
+  //       }
+
+  //       //destination node hints
+  //       for (let i = 0; i < destinationHintNodes.length; i++) {
+  //         const newNode: Node = destinationHintNodes[i];
+  //         newNodes.push(newNode);
+  //         edge = [
+  //           {
+  //             id: `e${newNode["id"]}-${destinationNodeId}`,
+  //             source: `${newNode["id"]}`,
+  //             target: `${destinationNodeId}`,
+  //             label: `${newNode.data.movie}`,
+  //           },
+  //         ];
+  //         newNodes = nodes.concat(newNode);
+  //         setNodes(newNodes);
+  //         newEdges = edges.concat(edge);
+  //         setEdges(newEdges);
+  //       }
+  //       forceUpdate;
+  //     }
+  //   }
+  // }
 
   async function handlePathDisplay() {
     if (currentNodeName && destinationNodeName) {
@@ -374,6 +422,8 @@ export default function Graph({
       if (pathObj) {
         console.log(`segments: ${pathObj.segments}`);
         setPathNodes(pathObj.segments);
+      } else {
+        console.log(`no path found`);
       }
     }
   }

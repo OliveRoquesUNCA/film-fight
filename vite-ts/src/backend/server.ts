@@ -179,23 +179,26 @@ io.on("connection", (socket) => {
   });
 
   //send queries to server-requests API
-  io.on("getConnectedActors", async (name) => {
+  socket.on("getConnectedActors", async (name, requestId) => {
     console.log("sending getConnectedActors request to server-requests");
     let records = await getConnectedActors(name);
     if (records !== undefined) {
-      socket.emit("getConnectedActorsResponse", records);
+      socket.emit(`getConnectedActorsResponse_${requestId}`, records);
     }
   });
 
-  io.on("getShortestPath", async (startNodeName, destNodeName) => {
-    console.log(
-      `sending shortest path request between ${startNodeName} and ${destNodeName}`
-    );
-    let records = await shortestPath(startNodeName, destNodeName);
-    if (records !== undefined) {
-      socket.emit("getShortestPathResponse", records);
+  socket.on(
+    "getShortestPath",
+    async (startNodeName, destNodeName, requestId) => {
+      console.log(
+        `sending shortest path request between ${startNodeName} and ${destNodeName}`
+      );
+      let records = await shortestPath(startNodeName, destNodeName);
+      if (records !== undefined) {
+        socket.emit(`getShortestPathResponse_${requestId}`, records);
+      }
     }
-  });
+  );
 
   // Return players to lobby
   socket.on("returnToLobby", () => {
