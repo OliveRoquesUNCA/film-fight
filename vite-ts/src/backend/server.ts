@@ -2,6 +2,11 @@
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
+import {
+  getConnectedActors,
+  getRandomActors,
+  shortestPath,
+} from "./server-requests";
 
 const app = express();
 const server = http.createServer(app);
@@ -73,7 +78,10 @@ io.on("connection", (socket) => {
   );
 
   // Accept challenge
-  socket.on("acceptChallenge", (challengerId, records) => {
+  socket.on("acceptChallenge", async (challengerId) => {
+    let records = await getRandomActors();
+    console.log("records from socket call");
+    console.log(records);
     const pending = Object.values(pendingChallenges).find(
       (c) => c.from === challengerId && c.to === socket.id
     );
@@ -151,8 +159,6 @@ io.on("connection", (socket) => {
     player.finishTime = now;
     room.players[socket.id].finishTime = now;
 
-    const finalTime = player.finishTime - (player.startTime || 0);
-
     room.winner = player.name;
     player.score = (player.score || 0) + 1;
 
@@ -165,10 +171,31 @@ io.on("connection", (socket) => {
 
     io.to(room.roomId).emit("gameOver", {
       winner: player.name,
-      finalTime: finalTime,
       players: playerList,
     });
   });
+
+  //send queries to server-requests API
+  socket.on("getConnectedActors", async (name, requestId) => {
+    console.log("sending getConnectedActors request to server-requests");
+    let records = await getConnectedActors(name);
+    if (records !== undefined) {
+      socket.emit(`getConnectedActorsResponse_${requestId}`, records);
+    }
+  });
+
+  socket.on(
+    "getShortestPath",
+    async (startNodeName, destNodeName, requestId) => {
+      console.log(
+        `sending shortest path request between ${startNodeName} and ${destNodeName}`
+      );
+      let records = await shortestPath(startNodeName, destNodeName);
+      if (records !== undefined) {
+        socket.emit(`getShortestPathResponse_${requestId}`, records);
+      }
+    }
+  );
 
   // Return players to lobby
   socket.on("returnToLobby", () => {

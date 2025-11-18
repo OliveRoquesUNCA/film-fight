@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Graph from "./components/Graph";
-import { getRandomActors } from "./server-requests";
-import { useSocket } from "./components/SocketContext";
+import Graph from "./Graph";
+import { useSocket } from "./SocketContext";
 
+/**
+ * Lobby that all players enter on connection. Websockets handle connections and disconnections, as well as
+ * starting and ending the game.
+ */
 export default function Lobby() {
   const [name, setName] = useState("");
   const [registered, setRegistered] = useState(false);
@@ -51,8 +54,7 @@ export default function Lobby() {
   };
 
   const acceptChallenge = async () => {
-    let records = await getRandomActors();
-    socket.emit("acceptChallenge", challenge.fromId, records);
+    socket.emit("acceptChallenge", challenge.fromId);
     setChallenge(null);
   };
 
@@ -87,7 +89,7 @@ export default function Lobby() {
         Welcome to Film Fight!
       </h2>
       {!registered ? (
-        // Registration screen (centered)
+        // Registration screen
         <div
           style={{
             flex: 1,

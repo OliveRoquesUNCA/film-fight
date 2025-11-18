@@ -3,7 +3,6 @@
 import { useState, useCallback, useEffect, useReducer } from "react";
 import {
   ReactFlow,
-  addEdge,
   applyNodeChanges,
   applyEdgeChanges,
   Background,
@@ -11,16 +10,13 @@ import {
   type Node,
   type Edge,
   type FitViewOptions,
-  type OnConnect,
   type OnNodesChange,
   type OnEdgesChange,
   type DefaultEdgeOptions,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { getConnectedActors, shortestPath } from "../server-requests";
-import { ensureConnected } from "../socketHelpers";
 import { useSocket } from "./SocketContext";
-import PathDisplay from "./PathDisplay";
+import HintDisplay from "./HintDisplay";
 
 const initialNodes: Node[] = [];
 
@@ -36,6 +32,12 @@ const defaultEdgeOptions: DefaultEdgeOptions = {
   animated: true,
 };
 
+/**
+ * This component renders the game for all players. the acceptChallenge websocket passes in the room Id, players,
+ * difficulty, the records of the starting actors, and a function to return to the lobby.
+ * @param param0 object containing the room Id, players, difficulty, records of starting actors, and onReturnToLobby function
+ * @returns
+ */
 export default function Graph({
   roomId,
   players,
@@ -72,6 +74,9 @@ export default function Graph({
 
   const difficultyColor = difficulty === "hard" ? "red" : "green";
 
+  /**
+   * Handles socket calls for setting status
+   */
   useEffect(() => {
     socket.on("playerStarted", (data) => {
       console.log(`setting status: ${data.name} has started!`);
@@ -79,9 +84,7 @@ export default function Graph({
     });
 
     socket.on("gameOver", (data) => {
-      setStatus(
-        `Game Over! Winner: ${data.winner} with time ${data.finalTime}`
-      );
+      setStatus(`Game Over! Winner: ${data.winner}`);
       console.log(`game over! data: ${data}`);
       setResult(data);
       if (data.players) setCurrentPlayers(data.players);
@@ -102,6 +105,33 @@ export default function Graph({
     };
   }, []);
 
+  /**
+   * Handles decreasing hints over time
+   */
+  useEffect(() => {
+    if (!hintActors || !pathNodes) return;
+
+    const interval = setInterval(() => {
+      setHintActors((prev) => {
+        console.log("path nodes");
+        console.log(pathNodes);
+        //remove a hint not on the shortest path
+        const removable = prev.find((n) => !pathNodes.includes(n));
+
+        if (!removable) {
+          clearInterval(interval);
+          return prev;
+        }
+
+        return prev.filter((n) => n !== removable);
+      });
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [hintActors, pathNodes]);
+
+  /**
+   * react flow needs these to update graph state
+   */
   const onNodesChange: OnNodesChange = useCallback(
     (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
     [setNodes]
@@ -110,11 +140,12 @@ export default function Graph({
     (changes) => setEdges((eds) => applyEdgeChanges(changes, eds)),
     [setEdges]
   );
-  const onConnect: OnConnect = useCallback(
-    (connection) => setEdges((eds) => addEdge(connection, eds)),
-    [setEdges]
-  );
 
+  /**
+   * Safety function in case db call returns duplicate nodes
+   * @param nodes nodes to check for duplicates
+   * @returns nodes trimmed of duplicates
+   */
   function trimDuplicateNodes(nodes: any[]) {
     const result = nodes.reduce((accumulator, current) => {
       const exists = accumulator.find((item: any) => {
@@ -128,8 +159,11 @@ export default function Graph({
     return result;
   }
 
+  /**
+   * Handles starting the game; resets state of nodes/edges and replaces with component params
+   */
   async function startGame() {
-    console.log("start button pressed");
+    //console.log("start button pressed");
     //reset nodes
     setNodes(initialNodes);
     setEdges(initialEdges);
@@ -137,9 +171,11 @@ export default function Graph({
     setDestinationNodeName("");
     setCurrentNodeId("");
     await resetNodes();
-    console.log("nodes reset");
+    //console.log("nodes reset");
+
     //get random actors from component parameters
-    console.log(records);
+    //console.log("getting records from params");
+    //console.log(records);
     let firstActor = records.actor1;
     let lastActor = records.actor2;
 
@@ -163,7 +199,7 @@ export default function Graph({
       style: {
         backgroundColor: "#77f1bcff",
         color: "#333", // Node text color
-        border: "2px solid #63b3ed",
+        border: "2px solid #87f366ff",
         padding: 10,
         fontWeight: "bold",
       },
@@ -175,17 +211,29 @@ export default function Graph({
     setCurrentNodeId(firstActor.id);
     setDestinationNodeName(lastActor.name);
     setDestinationNodeId(lastActor.id);
+    //forceUpdate;
+    //await handleHintNodes();
+    forceUpdate;
     socket.emit("startGame");
+    forceUpdate;
+    await handlePathDisplay();
+    await checkHintActors();
+    forceUpdate;
   }
 
-  async function getConnectedNodes(name: string) {
-    const records = await getConnectedActors(name);
-    if (records !== undefined) {
-      const personRecords: string[] = records[0];
+  /**
+   * Helper function for many game functions; returns array of actor nodes connected to the given name via 1 movie
+   * @param name name of actor to check connected actors of
+   * @returns array of connected actor nodes
+   */
+  async function getConnectedActors(name: string) {
+    let actorRecords = await getConnectedNodes(name);
+    if (actorRecords !== undefined) {
+      const personRecords: string[] = actorRecords[0];
       const personNodes: Node[] = [];
       let startingXPosition: number = nodes[0].position.x;
       const startingYPosition: number = nodes[0].position.y;
-
+      let uniquePersonNodes: Node[] = [];
       //get person nodes
       for (let i = 0; i < personRecords.length; i++) {
         startingXPosition = 70;
@@ -210,19 +258,26 @@ export default function Graph({
         //console.log(person);
         personNodes.push(person);
       }
-
-      //trim duplicate objects
-      const uniquePersonNodes = trimDuplicateNodes(personNodes);
+      console.log("unique person nodes from getconnectedactors:");
+      uniquePersonNodes = trimDuplicateNodes(personNodes);
+      console.log(uniquePersonNodes);
       return [uniquePersonNodes];
     }
   }
 
+  /**
+   * Search is called whenever the player guesses an actor. If they guess an actor that would win the game,
+   * it makes an edge to the destination actor and then ends the game. If they guess a correct actor
+   * that is not the destination actor, it creates a new node for that actor and an edge pointing to it.
+   * @param formData data from text box input
+   * @returns
+   */
   async function search(formData: any) {
     console.log(`current node name: ${currentNodeName}`);
     console.log(`destination node name: ${destinationNodeName}`);
     const query = formData.get("query");
     if (currentNodeName !== undefined) {
-      const connectedNodes = await getConnectedNodes(currentNodeName);
+      const connectedNodes = await getConnectedActors(currentNodeName);
       if (connectedNodes !== undefined) {
         const connectedActorNodes: Node[] = connectedNodes[0];
         for (let i = 0; i < connectedActorNodes.length; i++) {
@@ -269,7 +324,9 @@ export default function Graph({
             forceUpdate;
             const newNodes: Node[] = nodes.concat(newNode);
             setNodes(newNodes);
-
+            await handlePathDisplay();
+            await checkHintActors();
+            forceUpdate;
             break;
           }
         }
@@ -278,8 +335,10 @@ export default function Graph({
     }
   }
 
+  /**
+   * called when the win round game state is reached. Calls web socket to handle that
+   */
   async function winRound() {
-    await ensureConnected();
     console.log(
       `emitting winGame for room ${roomId} with socket id ${socket.id}`
     );
@@ -287,47 +346,148 @@ export default function Graph({
     console.log(players);
   }
 
+  /**
+   * Helper function to reset game state
+   */
   async function resetNodes() {
     setNodes(initialNodes);
     setEdges(initialEdges);
     setHintActors(initialHints);
   }
 
-  async function checkHint() {
-    if (currentNodeName !== undefined) {
+  /**
+   * Checks and displays actors connected to the current actor when the button is pressed.
+   */
+  async function checkHintActors() {
+    if (currentNodeName && destinationNodeName) {
       setHintActors([""]);
-      const connectedNodes = await getConnectedNodes(currentNodeName);
+      console.log("getting hint connected actor nodes");
+      const connectedNodes = await getConnectedActors(currentNodeName);
       if (connectedNodes !== undefined) {
+        await handlePathDisplay();
+        forceUpdate;
         const connectedActorNodes: Node[] = connectedNodes[0];
-        let hints: string[] | any = [];
-        for (let i = 0; i < connectedActorNodes.length; i++) {
-          const newNode: Node = connectedActorNodes[i];
-          hints.push(newNode.data.label);
-          if (i < connectedActorNodes.length - 1) {
-            hints.push(", ");
-          } else {
-            hints.push(" ");
-          }
+        console.log("connected actor nodes: ");
+        console.log(connectedActorNodes);
+        // Extract labels
+        const allLabels = connectedActorNodes.map((n) => n.data.label);
+        // Pick any nodes that are also on the path
+        const pathLabels = new Set(pathNodes);
+        const pathIntersections = allLabels.filter((lbl) =>
+          pathLabels.has(lbl)
+        );
+
+        // Choose one guaranteed path node if available
+        let guaranteedPick: string | unknown | null = null;
+        if (pathIntersections.length > 0) {
+          guaranteedPick =
+            pathIntersections[
+              Math.floor(Math.random() * pathIntersections.length)
+            ];
         }
-        setHintActors(hints);
+
+        // Shuffle helper
+        const shuffle = (arr: any[]) => arr.sort(() => Math.random() - 0.5);
+
+        // Remove guaranteed pick so we don’t duplicate
+        let remaining = guaranteedPick
+          ? allLabels.filter((l) => l !== guaranteedPick)
+          : allLabels.slice();
+
+        // Shuffle and trim to fill remaining slots up to 8
+        remaining = shuffle(remaining).slice(0, guaranteedPick ? 7 : 8);
+
+        const finalHints = guaranteedPick
+          ? shuffle([guaranteedPick, ...remaining])
+          : remaining;
+        setHintActors(finalHints);
       }
     }
   }
 
+  /**
+   * Helper function to return to the lobby when the game is done
+   */
   function returnToLobby() {
     socket.emit("returnToLobby");
     onReturnToLobby();
   }
 
+  /**
+   * Function to handle getConnectedActors() call via websockets; websockets handle actual API call to database,
+   * and this function awaits the result of that.
+   * @param name name of actor to check connected actor nodes of
+   * @returns Promise of the results of the database query
+   */
+  function getConnectedNodes(name: string): Promise<any> {
+    return new Promise((resolve, _reject) => {
+      // Listen for a single response
+      const requestId = Date.now();
+      socket.once(`getConnectedActorsResponse_${requestId}`, (data) => {
+        console.log("client receiving getConnectedActorsResponse");
+        resolve(data);
+      });
+
+      // Emit request
+      socket.emit("getConnectedActors", name, requestId);
+      console.log("client emitting getConnectedActors");
+    });
+  }
+
+  /**
+   * Function to handle handleShortestPath() via websockets. Websockets handle actual API call to database,
+   * and this function awaits the result of that.
+   * @param startNodeName node to start path from
+   * @param destNodeName node to end path on
+   * @returns Promise of database query result
+   */
+  function getShortestPath(
+    startNodeName: string,
+    destNodeName: string
+  ): Promise<any> {
+    return new Promise((resolve, _reject) => {
+      // Listen for a single response
+      const requestId = Date.now();
+      socket.once(`getShortestPathResponse_${requestId}`, (data) => {
+        console.log("client receiving getShortestPathResponse");
+        resolve(data);
+      });
+
+      // Emit request
+      socket.emit("getShortestPath", startNodeName, destNodeName, requestId);
+      console.log("client emitting getShortestPath");
+      setTimeout(() => _reject("timeout"), 8000);
+    });
+  }
+
+  /**
+   * Handles the display of the shortest path
+   */
   async function handlePathDisplay() {
     if (currentNodeName && destinationNodeName) {
       console.log(
         `finding shortest path between ${currentNodeName} and ${destinationNodeName}`
       );
-      const pathObj = await shortestPath(currentNodeName, destinationNodeName);
+      const pathObj = await getShortestPath(
+        currentNodeName,
+        destinationNodeName
+      );
       if (pathObj) {
         console.log(`segments: ${pathObj.segments}`);
-        setPathNodes(pathObj.segments);
+        console.log(`${JSON.stringify(pathObj.segments)}`);
+        let pathActors = [];
+        let shortestPathActor = "";
+        for (let i = 0; i < pathObj.segments.length; i++) {
+          if (i % 2 == 0) {
+            shortestPathActor = pathObj.segments[i].start.properties.name;
+          } else {
+            shortestPathActor = pathObj.segments[i].end.properties.name;
+          }
+          pathActors.push(shortestPathActor);
+        }
+        setPathNodes(pathActors);
+      } else {
+        console.log(`no path found`);
       }
     }
   }
@@ -339,12 +499,12 @@ export default function Graph({
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "flex-start",
-        height: "100vh", // full viewport
-        width: "100vw", // full width
+        height: "100vh",
+        width: "100vw",
         backgroundColor: "#0b0b0d",
         color: "#e0e0e0",
         fontFamily: "'Inter', sans-serif",
-        overflowY: "auto", // scrolls if needed
+        overflowY: "auto",
         overflowX: "hidden",
         padding: "0",
         margin: "0",
@@ -434,18 +594,8 @@ export default function Graph({
                 justifyContent: "center",
               }}
             >
-              <button className="game-btn" onClick={checkHint}>
-                Hint: Show connected actors to current actor
-              </button>
-              <button className="game-btn" onClick={handlePathDisplay}>
-                Hint: Show shortest path to destination
-              </button>
-              <button
-                className="game-btn debug-btn"
-                onClick={winRound}
-                style={{ opacity: 0.7 }}
-              >
-                (debug) Win Round
+              <button className="game-btn" onClick={checkHintActors}>
+                Hint: Update possible next choices from current actor
               </button>
             </div>
           </div>
@@ -488,19 +638,7 @@ export default function Graph({
         ) : (
           <p style={{ color: "#63b3ed" }}>Waiting to start game</p>
         )}
-        <p style={{ color: "#63b3ed" }}>
-          Actors connected to {currentNodeName}:{" "}
-          {hintActors ||
-            "click the 'show connected actors' button to show possible next guesses"}
-        </p>
-        {currentNodeName ? (
-          <p>
-            Shortest path between {currentNodeName} and {destinationNodeName}:
-          </p>
-        ) : (
-          <p></p>
-        )}
-        {pathNodes ? <PathDisplay nodes={pathNodes}></PathDisplay> : <p></p>}
+
         <form
           action={search}
           style={{
@@ -545,7 +683,8 @@ export default function Graph({
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
+            onConnect={() => {}}
+            connectOnClick={false}
             fitView
             fitViewOptions={fitViewOptions}
             defaultEdgeOptions={defaultEdgeOptions}
@@ -554,6 +693,15 @@ export default function Graph({
             <Controls />
           </ReactFlow>
         </div>
+        <p style={{ color: "#63b3ed" }}>
+          Actors connected to {currentNodeName}:
+          {"(Removes suboptimal hint every 5 seconds)"}
+          {hintActors ? (
+            <HintDisplay nodes={hintActors}></HintDisplay>
+          ) : (
+            "click the 'show connected actors' button to show possible next guesses"
+          )}
+        </p>
       </div>
     </div>
   );
