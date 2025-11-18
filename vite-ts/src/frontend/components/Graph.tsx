@@ -16,15 +16,13 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useSocket } from "./SocketContext";
-import PathDisplay from "./PathDisplay";
+import HintDisplay from "./HintDisplay";
 
 const initialNodes: Node[] = [];
 
 const initialEdges: Edge[] = [];
 
 const initialHints: String[] = [];
-
-//const initialMovies: String[] = [];
 
 const fitViewOptions: FitViewOptions = {
   padding: 0.2,
@@ -86,9 +84,7 @@ export default function Graph({
     });
 
     socket.on("gameOver", (data) => {
-      setStatus(
-        `Game Over! Winner: ${data.winner} with time ${data.finalTime}`
-      );
+      setStatus(`Game Over! Winner: ${data.winner}`);
       console.log(`game over! data: ${data}`);
       setResult(data);
       if (data.players) setCurrentPlayers(data.players);
@@ -108,6 +104,30 @@ export default function Graph({
       socket.off("disconnect");
     };
   }, []);
+
+  /**
+   * Handles decreasing hints over time
+   */
+  useEffect(() => {
+    if (!hintActors || !pathNodes) return;
+
+    const interval = setInterval(() => {
+      setHintActors((prev) => {
+        console.log("path nodes");
+        console.log(pathNodes);
+        //remove a hint not on the shortest path
+        const removable = prev.find((n) => !pathNodes.includes(n));
+
+        if (!removable) {
+          clearInterval(interval);
+          return prev;
+        }
+
+        return prev.filter((n) => n !== removable);
+      });
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [hintActors, pathNodes]);
 
   /**
    * react flow needs these to update graph state
@@ -191,10 +211,13 @@ export default function Graph({
     setCurrentNodeId(firstActor.id);
     setDestinationNodeName(lastActor.name);
     setDestinationNodeId(lastActor.id);
-    forceUpdate;
+    //forceUpdate;
     //await handleHintNodes();
     forceUpdate;
     socket.emit("startGame");
+    forceUpdate;
+    await handlePathDisplay();
+    await checkHintActors();
     forceUpdate;
   }
 
@@ -301,7 +324,8 @@ export default function Graph({
             forceUpdate;
             const newNodes: Node[] = nodes.concat(newNode);
             setNodes(newNodes);
-            //await handleHintNodes();
+            await handlePathDisplay();
+            await checkHintActors();
             forceUpdate;
             break;
           }
@@ -335,25 +359,48 @@ export default function Graph({
    * Checks and displays actors connected to the current actor when the button is pressed.
    */
   async function checkHintActors() {
-    if (currentNodeName !== undefined) {
+    if (currentNodeName && destinationNodeName) {
       setHintActors([""]);
       console.log("getting hint connected actor nodes");
       const connectedNodes = await getConnectedActors(currentNodeName);
       if (connectedNodes !== undefined) {
+        await handlePathDisplay();
+        forceUpdate;
         const connectedActorNodes: Node[] = connectedNodes[0];
         console.log("connected actor nodes: ");
         console.log(connectedActorNodes);
-        let hints: string[] | any = [];
-        for (let i = 0; i < connectedActorNodes.length; i++) {
-          const newNode: Node = connectedActorNodes[i];
-          hints.push(newNode.data.label);
-          if (i < connectedActorNodes.length - 1) {
-            hints.push(", ");
-          } else {
-            hints.push(" ");
-          }
+        // Extract labels
+        const allLabels = connectedActorNodes.map((n) => n.data.label);
+        // Pick any nodes that are also on the path
+        const pathLabels = new Set(pathNodes);
+        const pathIntersections = allLabels.filter((lbl) =>
+          pathLabels.has(lbl)
+        );
+
+        // Choose one guaranteed path node if available
+        let guaranteedPick: string | unknown | null = null;
+        if (pathIntersections.length > 0) {
+          guaranteedPick =
+            pathIntersections[
+              Math.floor(Math.random() * pathIntersections.length)
+            ];
         }
-        setHintActors(hints);
+
+        // Shuffle helper
+        const shuffle = (arr: any[]) => arr.sort(() => Math.random() - 0.5);
+
+        // Remove guaranteed pick so we don’t duplicate
+        let remaining = guaranteedPick
+          ? allLabels.filter((l) => l !== guaranteedPick)
+          : allLabels.slice();
+
+        // Shuffle and trim to fill remaining slots up to 8
+        remaining = shuffle(remaining).slice(0, guaranteedPick ? 7 : 8);
+
+        const finalHints = guaranteedPick
+          ? shuffle([guaranteedPick, ...remaining])
+          : remaining;
+        setHintActors(finalHints);
       }
     }
   }
@@ -413,61 +460,6 @@ export default function Graph({
     });
   }
 
-  // async function handleHintNodes() {
-  //   if (currentNodeName && destinationNodeName) {
-  //     console.log(
-  //       `finding connected nodes for ${currentNodeName} and ${destinationNodeName}`
-  //     );
-  //     const currentHintObj = await getConnectedActors(currentNodeName);
-  //     const destinationHintObj = await getConnectedActors(destinationNodeName);
-  //     if (currentHintObj && destinationHintObj) {
-  //       const currentHintNodes = currentHintObj[0];
-  //       const destinationHintNodes = destinationHintObj[0];
-  //       console.log(`current hint node:${currentHintNodes}`);
-  //       console.log(`dest hint nodes: ${destinationHintNodes}`);
-  //       let newNodes: Node[] = [];
-  //       let newEdges: Edge[] = [];
-  //       let edge: Edge[] = [];
-
-  //       //current node hints
-  //       for (let i = 0; i < currentHintNodes.length; i++) {
-  //         const newNode: Node = currentHintNodes[i];
-  //         edge = [
-  //           {
-  //             id: `e${currentNodeId}-${newNode["id"]}`,
-  //             source: `${currentNodeId}`,
-  //             target: `${newNode["id"]}`,
-  //             label: `${newNode.data.movie}`,
-  //           },
-  //         ];
-  //         newNodes = nodes.concat(newNode);
-  //         setNodes(newNodes);
-  //         newEdges = edges.concat(edge);
-  //         setEdges(newEdges);
-  //       }
-
-  //       //destination node hints
-  //       for (let i = 0; i < destinationHintNodes.length; i++) {
-  //         const newNode: Node = destinationHintNodes[i];
-  //         newNodes.push(newNode);
-  //         edge = [
-  //           {
-  //             id: `e${newNode["id"]}-${destinationNodeId}`,
-  //             source: `${newNode["id"]}`,
-  //             target: `${destinationNodeId}`,
-  //             label: `${newNode.data.movie}`,
-  //           },
-  //         ];
-  //         newNodes = nodes.concat(newNode);
-  //         setNodes(newNodes);
-  //         newEdges = edges.concat(edge);
-  //         setEdges(newEdges);
-  //       }
-  //       forceUpdate;
-  //     }
-  //   }
-  // }
-
   /**
    * Handles the display of the shortest path
    */
@@ -482,7 +474,18 @@ export default function Graph({
       );
       if (pathObj) {
         console.log(`segments: ${pathObj.segments}`);
-        setPathNodes(pathObj.segments);
+        console.log(`${JSON.stringify(pathObj.segments)}`);
+        let pathActors = [];
+        let shortestPathActor = "";
+        for (let i = 0; i < pathObj.segments.length; i++) {
+          if (i % 2 == 0) {
+            shortestPathActor = pathObj.segments[i].start.properties.name;
+          } else {
+            shortestPathActor = pathObj.segments[i].end.properties.name;
+          }
+          pathActors.push(shortestPathActor);
+        }
+        setPathNodes(pathActors);
       } else {
         console.log(`no path found`);
       }
@@ -592,17 +595,7 @@ export default function Graph({
               }}
             >
               <button className="game-btn" onClick={checkHintActors}>
-                Hint: Show connected actors to current actor
-              </button>
-              <button className="game-btn" onClick={handlePathDisplay}>
-                Hint: Show shortest path to destination
-              </button>
-              <button
-                className="game-btn debug-btn"
-                onClick={winRound}
-                style={{ opacity: 0.7 }}
-              >
-                (debug) Win Round
+                Hint: Update possible next choices from current actor
               </button>
             </div>
           </div>
@@ -701,18 +694,14 @@ export default function Graph({
           </ReactFlow>
         </div>
         <p style={{ color: "#63b3ed" }}>
-          Actors connected to {currentNodeName}:{" "}
-          {hintActors ||
-            "click the 'show connected actors' button to show possible next guesses"}
+          Actors connected to {currentNodeName}:
+          {"(Removes suboptimal hint every 5 seconds)"}
+          {hintActors ? (
+            <HintDisplay nodes={hintActors}></HintDisplay>
+          ) : (
+            "click the 'show connected actors' button to show possible next guesses"
+          )}
         </p>
-        {currentNodeName ? (
-          <p>
-            Shortest path between {currentNodeName} and {destinationNodeName}:
-          </p>
-        ) : (
-          <p></p>
-        )}
-        {pathNodes ? <PathDisplay nodes={pathNodes}></PathDisplay> : <p></p>}
       </div>
     </div>
   );

@@ -1,28 +1,22 @@
 import React from "react";
 
-type Node = {
-  start: { labels: string[]; properties: any };
-  end: { labels: string[]; properties: any };
-};
-
-interface PathDisplayProps {
-  nodes: Node[];
+interface HintDisplayProps {
+  nodes: String[];
 }
 
-const PathDisplay: React.FC<PathDisplayProps> = ({ nodes }) => {
+const HintDisplay: React.FC<HintDisplayProps> = ({ nodes }) => {
   function nodesToString() {
     let stringedNodes = "";
     for (let i = 0; i < nodes.length; i++) {
       stringedNodes += nodes[i];
       if (i < nodes.length - 1) {
-        stringedNodes += "=>";
+        stringedNodes += ", ";
       } else {
         stringedNodes += " ";
       }
     }
     return stringedNodes;
   }
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
       <div style={{ color: "lightblue" }}>{nodesToString()}</div>
@@ -30,4 +24,4 @@ const PathDisplay: React.FC<PathDisplayProps> = ({ nodes }) => {
   );
 };
 
-export default PathDisplay;
+export default HintDisplay;

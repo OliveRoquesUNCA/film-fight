@@ -159,8 +159,6 @@ io.on("connection", (socket) => {
     player.finishTime = now;
     room.players[socket.id].finishTime = now;
 
-    const finalTime = player.finishTime - (player.startTime || 0);
-
     room.winner = player.name;
     player.score = (player.score || 0) + 1;
 
@@ -173,7 +171,6 @@ io.on("connection", (socket) => {
 
     io.to(room.roomId).emit("gameOver", {
       winner: player.name,
-      finalTime: finalTime,
       players: playerList,
     });
   });
